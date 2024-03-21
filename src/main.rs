@@ -1,6 +1,4 @@
-use std::{thread::sleep, time::Duration};
-
-use g29::{G29Led, G29Options, G29};
+use g29::{G29Options, G29};
 
 fn main() {
     let mut g29 = G29::new(G29Options {
@@ -10,9 +8,12 @@ fn main() {
     g29.initialize();
 
     loop {
-        g29.set_leds(G29Led::All);
-        sleep(Duration::from_millis(100));
-        g29.set_leds(G29Led::Red | G29Led::GreenOne);
-        sleep(Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        println!(
+            " Throttle: {} Brake: {} Steering: {}",
+            g29.throttle(),
+            g29.brake(),
+            g29.steering()
+        );
     }
 }

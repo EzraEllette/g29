@@ -80,7 +80,7 @@ pub struct Memory {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Wheel {
-    turn: f32,
+    turn: u8,
     shift_left: u8,
     shift_right: u8,
     dpad: u8,
@@ -126,7 +126,7 @@ impl Default for Memory {
 impl Default for Wheel {
     fn default() -> Self {
         Wheel {
-            turn: 50_f32,
+            turn: 50_u8,
             shift_left: 0,
             shift_right: 0,
             dpad: 0,
@@ -194,6 +194,7 @@ struct InnerG29 {
     prev_memory: Arc<RwLock<Memory>>,
     prev_data: Arc<RwLock<[u8; 12]>>,
     prev_led: Arc<RwLock<G29Led>>,
+    reader_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl G29 {
@@ -236,19 +237,35 @@ impl G29 {
                 prev_memory: Arc::new(RwLock::new(Memory::default())),
                 prev_data: Arc::new(RwLock::new([0; 12])),
                 prev_led: Arc::new(RwLock::new(G29Led::None)),
+                reader_handle: None,
             })),
         }
     }
 
-    pub fn get_status(&self) -> Memory {
-        self.inner.read().unwrap().memory.read().unwrap().clone()
+    pub fn throttle(&self) -> u8 {
+        self.inner.read().unwrap().memory.read().unwrap().pedals.gas
     }
 
-    pub fn get_wheel_angle(&self) -> f32 {
+    pub fn brake(&self) -> u8 {
+        self.inner
+            .read()
+            .unwrap()
+            .memory
+            .read()
+            .unwrap()
+            .pedals
+            .brake
+    }
+
+    pub fn steering(&self) -> u8 {
+        self.inner.read().unwrap().memory.read().unwrap().wheel.turn
+    }
+
+    pub fn steering_angle(&self) -> f32 {
         let percent = self.inner.read().unwrap().memory.read().unwrap().wheel.turn;
 
         // convert to degrees based on range option
-        let degrees = (percent * self.options.range as f32) / 100_f32;
+        let degrees = (percent as f32 * self.options.range as f32) / 100_f32;
 
         if self.options.debug {
             println!("get_wheel_angle -> {}", degrees);
@@ -330,7 +347,7 @@ impl G29 {
 
         // use thread to listen for wheel events and trigger events
         let local_self = self.inner.clone();
-        thread::spawn(move || loop {
+        let thread_handle = thread::spawn(move || loop {
             let buf = &mut [0 as u8; 12];
             let size_read = local_self
                 .read()
@@ -355,6 +372,8 @@ impl G29 {
                 }
             }
         });
+
+        self.inner.write().unwrap().reader_handle = Some(thread_handle);
     }
 
     fn auto_center(&self) {
@@ -484,4 +503,20 @@ impl G29 {
             "force_friction",
         );
     } // forceFriction
+}
+
+impl Drop for G29 {
+    fn drop(&mut self) {
+        self.force_off(0xf3);
+        self.set_leds(G29Led::None);
+        self.force_friction(0, 0);
+        self.options.auto_center = [0x00, 0x00];
+        self.auto_center();
+        let mut inner = self.inner.write().unwrap();
+
+        inner
+            .reader_handle
+            .take()
+            .and_then(|handle| handle.join().ok());
+    }
 }

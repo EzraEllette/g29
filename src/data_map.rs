@@ -170,25 +170,6 @@ fn reduce_number_from_to(mut num: u8, mut to: u8) -> u8 {
     num
 } // reduceNumberFromTo
 
-fn round(num: f32, exp: u8) -> f32 {
-    /*
-      Round a number to a certain amount of places.
-    */
-    if exp == 0 {
-        return num.round();
-    }
-
-    // round num to exp places
-    let exp = 10_u32.pow(exp as u32);
-    (num * exp as f32).round() / exp as f32
-} // round
-
-#[test]
-fn test_round() {
-    assert_eq!(round(1.2345, 2), 1.23);
-    assert_eq!(round(1.2345, 0), 1_f32);
-}
-
 //------------------
 // Functions: Wheel
 //------------------
@@ -267,18 +248,7 @@ fn wheel_spinner_and_buttons(data: [u8; 12], memory: &mut Memory) {
 } // wheelSpinnerAndButtons
 
 fn wheel_turn(data: [u8; 12], memory: &mut Memory) {
-    let wheel_course = (data[5] as f32 / 255_f32) * (100_f32 - (100_f32 / 256_f32)); // returns a number between 0 and 99.609375
-    let wheel_fine = (data[4] as f32 / 255_f32) * (100_f32 / 256_f32); // returns a number between 0 and 0.390625
-
-    let mut wheel = round(wheel_course + wheel_fine, 2);
-
-    if wheel > 100_f32 {
-        wheel = 100_f32; // wheel turned completely right
-    }
-
-    if wheel < 0_f32 {
-        wheel = 0_f32; // wheel turned completely left
-    }
+    let wheel = data[5]; // between 0 and 255
 
     memory.wheel.turn = wheel;
 } // wheelTurn
@@ -302,8 +272,8 @@ fn pedal_to_percent(num: u8) -> u8 {
     /*
       Converts a number from 0-255 to a number from 0-100.
     */
-    let percent = (num as f32 / 255.0) * 100.0;
-    round(percent, 0) as u8
+    let percent = 100 - ((num as f32 / 255.0) * 100.0) as u8;
+    percent
 } // pedalToPercent
 
 //--------------------
