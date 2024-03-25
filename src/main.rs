@@ -7,13 +7,6 @@ fn main() {
     });
     g29.initialize();
 
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        println!(
-            " Throttle: {} Brake: {} Steering: {}",
-            g29.throttle(),
-            g29.brake(),
-            g29.steering()
-        );
-    }
+    g29.auto_center_complex(80, 100, 0x03, 0x03, false, 255);
+    loop {}
 }

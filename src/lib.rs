@@ -376,6 +376,36 @@ impl G29 {
         self.inner.write().unwrap().reader_handle = Some(thread_handle);
     }
 
+    pub fn auto_center_complex(
+        &self,
+        clockwise_angle: u8,
+        counter_clockwise_angle: u8,
+        clockwise_force: u8,
+        counter_clockwise_force: u8,
+        reverse: bool,
+        centering_force: u8,
+    ) {
+        if !self.options.auto_center_enabled {
+            return;
+        }
+
+        self.force_off(0xf5);
+
+        // auto-center on
+        self.relay_os(
+            [
+                0xfc,
+                0x01,
+                clockwise_angle,
+                counter_clockwise_angle,
+                clockwise_force | counter_clockwise_force,
+                reverse as u8,
+                centering_force,
+            ],
+            "set_auto_center_complex",
+        );
+    }
+
     fn auto_center(&self) {
         /*
             Set wheel autocentering based on existing options.
