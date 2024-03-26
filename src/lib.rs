@@ -881,54 +881,14 @@ impl G29 {
         self.force_friction(0, 0);
         self.options.auto_center = [0x00, 0x00];
         self.set_auto_center();
+        let mut inner = self.inner.write().unwrap();
 
-        // join the reader_handle and set it to none
-    }
+        inner
+            .reader_handle
+            .take()
+            .and_then(|handle| handle.join().ok());
 
-    pub fn handlers(&self) {
-        // print event handlers
-        self.inner
-            .read()
-            .unwrap()
-            .event_handlers
-            .read()
-            .unwrap()
-            .iter()
-            .for_each(|(event, event_handlers)| {
-                println!("{:?} -> {:?}", event, event_handlers);
-            });
-    }
-
-    #[cfg(feature = "events")]
-    pub fn register_event_handler(
-        &mut self,
-        event: Event,
-        handler: HandlerFn,
-    ) -> Option<EventHandler> {
-        self.inner
-            .write()
-            .unwrap()
-            .event_handlers
-            .write()
-            .unwrap()
-            .entry(event)
-            .or_insert_with(|| EventHandlers::new(event))
-            .insert(handler)
-    }
-
-    #[cfg(feature = "events")]
-    pub fn unregister_event_handler(&mut self, event_handler: EventHandler) {
-        self.inner
-            .write()
-            .unwrap()
-            .event_handlers
-            .write()
-            .unwrap()
-            .get_mut(&event_handler.event)
-            .and_then(|handlers| {
-                handlers.handlers.remove(&event_handler.id);
-                Some(handlers)
-            });
+        inner.reader_handle = None;
     }
 }
 
