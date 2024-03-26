@@ -1,3 +1,4 @@
+use core::time;
 /// # G29
 /// A library for interfacing with the Logitech G29 Racing Wheel.
 ///
@@ -288,7 +289,7 @@ struct InnerG29 {
     wheel: Mutex<hidapi::HidDevice>,
     reader_handle: Option<thread::JoinHandle<()>>,
     #[cfg(feature = "events")]
-    event_handlers: Mutex<HashMap<Event, EventHandlers>>,
+    event_handlers: RwLock<HashMap<Event, EventHandlers>>,
 }
 
 ///
@@ -398,7 +399,7 @@ impl G29 {
                 data: Arc::new(RwLock::new([0; FRAME_SIZE])),
                 reader_handle: None,
                 #[cfg(feature = "events")]
-                event_handlers: Mutex::new(HashMap::new()),
+                event_handlers: RwLock::new(HashMap::new()),
             })),
         };
 
@@ -496,6 +497,10 @@ impl G29 {
                 let local_self_write = local_self.read().unwrap();
                 let mut prev_data = local_self_write.data.write().unwrap();
 
+                if new_data == *prev_data {
+                    continue;
+                }
+
                 #[cfg(feature = "events")]
                 {
                     let events = local_self_write.events(&prev_data, &new_data);
@@ -503,7 +508,7 @@ impl G29 {
                     events.iter().for_each(|event| {
                         local_self_write
                             .event_handlers
-                            .lock()
+                            .read()
                             .unwrap()
                             .get(event)
                             .and_then(|event_handlers| {
@@ -932,7 +937,7 @@ impl G29 {
             .read()
             .unwrap()
             .event_handlers
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .for_each(|(event, event_handlers)| {
@@ -950,7 +955,7 @@ impl G29 {
             .write()
             .unwrap()
             .event_handlers
-            .lock()
+            .write()
             .unwrap()
             .entry(event)
             .or_insert_with(|| EventHandlers::new(event))
@@ -963,7 +968,7 @@ impl G29 {
             .write()
             .unwrap()
             .event_handlers
-            .lock()
+            .write()
             .unwrap()
             .get_mut(&event_handler.event)
             .and_then(|handlers| {
