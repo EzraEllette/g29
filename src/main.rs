@@ -10,5 +10,12 @@ fn main() {
     // println!("{:?}", g29.handlers());
     // g29.handlers();
 
-    loop {}
+    loop {
+        println!(
+            " Throttle: {} | Brake: {} | Clutch: {}",
+            g29.throttle(),
+            g29.brake(),
+            g29.clutch()
+        );
+    }
 }
