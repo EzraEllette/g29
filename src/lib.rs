@@ -1,32 +1,3 @@
-/// # G29
-/// A library for interfacing with the Logitech G29 Racing Wheel.
-///
-/// The Wheel should be placed in PS3 mode.
-///
-/// ## Example
-///
-/// ```rust
-/// use g29::{G29, Options};
-/// use std::time::Duration;
-/// use std::thread::sleep;
-///
-/// fn main() {
-///   let options = Options {
-///     debug: true,
-///     ..Default::default()
-///   };
-///
-///  let g29 = G29::connect(options);
-///
-/// loop {
-///   println!("Steering: {}", g29.steering());
-///   println!("Throttle: {}", g29.throttle());
-///   println!("Brake: {}", g29.brake());
-///   println!("Clutch: {}", g29.clutch());
-///   sleep(Duration::from_millis(100));
-/// }
-/// ```
-///    
 use hidapi::{DeviceInfo, HidApi};
 use std::{
     env::consts::OS,
