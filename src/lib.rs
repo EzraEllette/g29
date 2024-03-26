@@ -1,3 +1,4 @@
+use hidapi::{DeviceInfo, HidApi};
 use std::{
     env::consts::OS,
     ops::BitOr,
@@ -7,14 +8,36 @@ use std::{
     time::Duration,
 };
 
-use data_map::map_data;
-use hidapi::{DeviceInfo, HidApi};
+const FRAME_SIZE: usize = 12;
 
-pub mod data_map;
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub enum DpadPosition {
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    TopLeft,
+    None,
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub enum GearSelector {
+    Neutral = 0,
+    First = 1,
+    Second = 2,
+    Third = 4,
+    Fourth = 8,
+    Fifth = 16,
+    Sixth = 32,
+    Reverse = 64,
+}
 
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum G29Led {
+pub enum Led {
     None = 0x0,
     GreenOne = 0x01,
     GreenTwo = 0x02,
@@ -25,142 +48,63 @@ pub enum G29Led {
     Other(u8),
 }
 
-impl G29Led {
+impl Led {
     fn as_u8(&self) -> u8 {
         match self {
-            G29Led::None => 0x0,
-            G29Led::GreenOne => 0x01,
-            G29Led::GreenTwo => 0x02,
-            G29Led::OrangeOne => 0x04,
-            G29Led::OrangeTwo => 0x08,
-            G29Led::Red => 0x10,
-            G29Led::All => 0x1F,
-            G29Led::Other(val) => *val,
+            Led::None => 0x0,
+            Led::GreenOne => 0x01,
+            Led::GreenTwo => 0x02,
+            Led::OrangeOne => 0x04,
+            Led::OrangeTwo => 0x08,
+            Led::Red => 0x10,
+            Led::All => 0x1F,
+            Led::Other(val) => *val,
         }
     }
 }
 
-impl BitOr for G29Led {
-    type Output = G29Led;
+impl BitOr for Led {
+    type Output = Led;
 
     fn bitor(self, other: Self) -> Self::Output {
         match (self, other) {
-            (G29Led::None, _) => other,
-            (_, G29Led::None) => self,
-            _ => G29Led::Other(self.as_u8() | other.as_u8()),
+            (Led::None, _) => other,
+            (_, Led::None) => self,
+            _ => Led::Other(self.as_u8() | other.as_u8()),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct G29Options {
+pub struct G29 {
+    options: Options,
+    prepend_write: bool,
+    inner: Arc<RwLock<InnerG29>>,
+    calibrated: bool,
+}
+
+#[derive(Debug)]
+struct InnerG29 {
+    data: Arc<RwLock<[u8; FRAME_SIZE]>>,
+    wheel: Mutex<hidapi::HidDevice>,
+    reader_handle: Option<thread::JoinHandle<()>>,
+}
+
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub struct Options {
     pub debug: bool,
     pub range: u16,
     pub auto_center: [u8; 2],
     pub auto_center_enabled: bool,
 }
 
-impl Default for G29Options {
+impl Default for Options {
     fn default() -> Self {
-        G29Options {
+        Options {
             auto_center: [0x07, 0xff],
             debug: false,
             range: 900,
             auto_center_enabled: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Memory {
-    wheel: Wheel,
-    shifter: Shifter,
-    pedals: Pedals,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Wheel {
-    turn: u8,
-    shift_left: u8,
-    shift_right: u8,
-    dpad: u8,
-    button_x: u8,
-    button_square: u8,
-    button_triangle: u8,
-    button_circle: u8,
-    button_l2: u8,
-    button_r2: u8,
-    button_l3: u8,
-    button_r3: u8,
-    button_plus: u8,
-    button_minus: u8,
-    spinner: u8,
-    button_spinner: u8,
-    button_share: u8,
-    button_option: u8,
-    button_playstation: u8,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Shifter {
-    gear: u8,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Pedals {
-    gas: u8,
-    brake: u8,
-    clutch: u8,
-}
-
-impl Default for Memory {
-    fn default() -> Self {
-        Memory {
-            wheel: Wheel::default(),
-            shifter: Shifter::default(),
-            pedals: Pedals::default(),
-        }
-    }
-}
-
-impl Default for Wheel {
-    fn default() -> Self {
-        Wheel {
-            turn: 50_u8,
-            shift_left: 0,
-            shift_right: 0,
-            dpad: 0,
-            button_x: 0,
-            button_square: 0,
-            button_triangle: 0,
-            button_circle: 0,
-            button_l2: 0,
-            button_r2: 0,
-            button_l3: 0,
-            button_r3: 0,
-            button_plus: 0,
-            button_minus: 0,
-            spinner: 0,
-            button_spinner: 0,
-            button_share: 0,
-            button_option: 0,
-            button_playstation: 0,
-        }
-    }
-}
-
-impl Default for Shifter {
-    fn default() -> Self {
-        Shifter { gear: 0 }
-    }
-}
-
-impl Default for Pedals {
-    fn default() -> Self {
-        Pedals {
-            gas: 0,
-            brake: 0,
-            clutch: 0,
         }
     }
 }
@@ -181,29 +125,14 @@ fn get_wheel_info(api: &HidApi) -> DeviceInfo {
         .clone()
 }
 
-pub struct G29 {
-    options: G29Options,
-    prepend_write: bool,
-    inner: Arc<RwLock<InnerG29>>,
-    calibrated: bool,
-}
-
-struct InnerG29 {
-    memory: Arc<RwLock<Memory>>,
-    wheel: Mutex<hidapi::HidDevice>,
-    prev_memory: Arc<RwLock<Memory>>,
-    prev_data: Arc<RwLock<[u8; 12]>>,
-    prev_led: Arc<RwLock<G29Led>>,
-    reader_handle: Option<thread::JoinHandle<()>>,
-}
-
 impl G29 {
-    pub fn new(options: G29Options) -> G29 {
+    pub fn connect(options: Options) -> G29 {
         if options.debug {
             println!("userOptions -> {:?}", options);
         }
         // get wheel
         let api = HidApi::new().expect("Failed to initialize HID API");
+
         let wheel_info = get_wheel_info(&api);
 
         if wheel_info.path().is_empty() {
@@ -227,54 +156,23 @@ impl G29 {
             }
         };
 
-        G29 {
+        let mut g29 = G29 {
             options,
             prepend_write,
             calibrated: false,
             inner: Arc::new(RwLock::new(InnerG29 {
-                memory: Arc::new(RwLock::new(Memory::default())),
                 wheel: Mutex::new(wheel),
-                prev_memory: Arc::new(RwLock::new(Memory::default())),
-                prev_data: Arc::new(RwLock::new([0; 12])),
-                prev_led: Arc::new(RwLock::new(G29Led::None)),
+                data: Arc::new(RwLock::new([0; FRAME_SIZE])),
                 reader_handle: None,
             })),
-        }
+        };
+
+        g29.initialize();
+
+        g29
     }
 
-    pub fn throttle(&self) -> u8 {
-        self.inner.read().unwrap().memory.read().unwrap().pedals.gas
-    }
-
-    pub fn brake(&self) -> u8 {
-        self.inner
-            .read()
-            .unwrap()
-            .memory
-            .read()
-            .unwrap()
-            .pedals
-            .brake
-    }
-
-    pub fn steering(&self) -> u8 {
-        self.inner.read().unwrap().memory.read().unwrap().wheel.turn
-    }
-
-    pub fn steering_angle(&self) -> f32 {
-        let percent = self.inner.read().unwrap().memory.read().unwrap().wheel.turn;
-
-        // convert to degrees based on range option
-        let degrees = (percent as f32 * self.options.range as f32) / 100_f32;
-
-        if self.options.debug {
-            println!("get_wheel_angle -> {}", degrees);
-        }
-
-        degrees
-    }
-
-    pub fn initialize(&mut self) {
+    fn initialize(&mut self) {
         self.inner
             .write()
             .unwrap()
@@ -284,7 +182,7 @@ impl G29 {
             .set_blocking_mode(false)
             .expect("Failed to set non-blocking mode");
 
-        let mut data = [0 as u8; 12];
+        let mut data = [0 as u8; FRAME_SIZE];
         let data_size = self
             .inner
             .read()
@@ -297,7 +195,7 @@ impl G29 {
 
         self.force_off(0xf3);
 
-        if data_size == 12 || self.calibrated {
+        if data_size == FRAME_SIZE || self.calibrated {
             if self.options.debug {
                 println!("connect -> Wheel already in high precision mode.");
             }
@@ -339,7 +237,7 @@ impl G29 {
         }
 
         self.set_range();
-        self.auto_center();
+        self.set_auto_center();
 
         if self.options.debug {
             println!("listen -> Ready to listen for wheel events.");
@@ -348,7 +246,7 @@ impl G29 {
         // use thread to listen for wheel events and trigger events
         let local_self = self.inner.clone();
         let thread_handle = thread::spawn(move || loop {
-            let buf = &mut [0 as u8; 12];
+            let buf = &mut [0 as u8; FRAME_SIZE];
             let size_read = local_self
                 .read()
                 .unwrap()
@@ -357,56 +255,47 @@ impl G29 {
                 .unwrap()
                 .read(buf)
                 .expect("listen -> Error reading from device.");
-            if size_read > 0 {
+            if size_read == FRAME_SIZE {
                 let local_self_read = local_self.read().unwrap();
-                let mut prev_data = local_self_read.prev_data.write().unwrap();
-                if *prev_data != *buf {
-                    let dif_positions = data_map::diff_positions(*prev_data, *buf);
-
-                    *prev_data = *buf;
-                    let mut memory = local_self_read.memory.write().unwrap();
-                    let mut prev_memory = local_self_read.prev_memory.write().unwrap();
-
-                    *prev_memory = *memory;
-                    map_data(dif_positions, *buf, &mut memory);
-                }
+                let mut data = local_self_read.data.write().unwrap();
+                *data = *buf;
             }
         });
 
         self.inner.write().unwrap().reader_handle = Some(thread_handle);
     }
 
-    pub fn auto_center_complex(
-        &self,
-        clockwise_angle: u8,
-        counter_clockwise_angle: u8,
-        clockwise_force: u8,
-        counter_clockwise_force: u8,
-        reverse: bool,
-        centering_force: u8,
-    ) {
-        if !self.options.auto_center_enabled {
-            return;
-        }
+    // fn auto_center_complex(
+    //     &self,
+    //     clockwise_angle: u8,
+    //     counter_clockwise_angle: u8,
+    //     clockwise_force: u8,
+    //     counter_clockwise_force: u8,
+    //     reverse: bool,
+    //     centering_force: u8,
+    // ) {
+    //     if !self.options.auto_center_enabled {
+    //         return;
+    //     }
 
-        self.force_off(0xf5);
+    //     self.force_off(0xf5);
 
-        // auto-center on
-        self.relay_os(
-            [
-                0xfc,
-                0x01,
-                clockwise_angle,
-                counter_clockwise_angle,
-                clockwise_force | counter_clockwise_force,
-                reverse as u8,
-                centering_force,
-            ],
-            "set_auto_center_complex",
-        );
-    }
+    //     // auto-center on
+    //     self.relay_os(
+    //         [
+    //             0xfc,
+    //             0x01,
+    //             clockwise_angle,
+    //             counter_clockwise_angle,
+    //             clockwise_force | counter_clockwise_force,
+    //             reverse as u8,
+    //             centering_force,
+    //         ],
+    //         "set_auto_center_complex",
+    //     );
+    // }
 
-    fn auto_center(&self) {
+    fn set_auto_center(&self) {
         /*
             Set wheel autocentering based on existing options.
         */
@@ -500,19 +389,16 @@ impl G29 {
         // byte 5 is the rate the effect strength rises as the wheel turns, 0x00 to 0xff
         self.options.auto_center = [strength, turning_multiplier];
 
-        self.auto_center();
+        self.set_auto_center();
     }
 
-    pub fn set_leds(&mut self, leds: G29Led) {
+    pub fn set_leds(&mut self, leds: Led) {
         /*
             Set the LED lights on the G29.
         */
-        if leds != *self.inner.read().unwrap().prev_led.read().unwrap() {
-            let data = [0xf8, 0x12, leds.as_u8(), 0x00, 0x00, 0x00, 0x01];
+        let data = [0xf8, 0x12, leds.as_u8(), 0x00, 0x00, 0x00, 0x01];
 
-            self.relay_os(data, "set_leds");
-            *self.inner.write().unwrap().prev_led.write().unwrap() = leds;
-        }
+        self.relay_os(data, "set_leds");
     }
 
     pub fn force_friction(&self, mut left: u8, mut right: u8) {
@@ -527,26 +413,163 @@ impl G29 {
         left = left * 7;
         right = right * 7;
 
-        // the first "number" is for left rotation, the second for right rotation
         self.relay_os(
             [0x21, 0x02, left, 0x00, right, 0x00, 0x00],
             "force_friction",
         );
     } // forceFriction
-}
 
-impl Drop for G29 {
-    fn drop(&mut self) {
+    pub fn throttle(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[6]
+    }
+
+    pub fn brake(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[7]
+    }
+
+    pub fn steering(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[5]
+    }
+
+    pub fn steering_fine(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[4]
+    }
+
+    pub fn dpad(&self) -> DpadPosition {
+        match self.inner.read().unwrap().data.read().unwrap()[0] & 15 {
+            0 => DpadPosition::Top,
+            1 => DpadPosition::TopRight,
+            2 => DpadPosition::Right,
+            3 => DpadPosition::BottomRight,
+            4 => DpadPosition::Bottom,
+            5 => DpadPosition::BottomLeft,
+            6 => DpadPosition::Left,
+            7 => DpadPosition::TopLeft,
+            _ => DpadPosition::None,
+        }
+    }
+
+    pub fn x_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[0] & 16 == 16
+    }
+
+    pub fn square_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[0] & 32 == 32
+    }
+
+    pub fn circle_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[0] & 64 == 64
+    }
+
+    pub fn triangle_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[0] & 128 == 128
+    }
+
+    pub fn right_shifter(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 1 == 1
+    }
+
+    pub fn left_shifter(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 2 == 2
+    }
+
+    pub fn r2_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 4 == 4
+    }
+
+    pub fn l2_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 8 == 8
+    }
+
+    pub fn share_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 16 == 16
+    }
+
+    pub fn option_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 32 == 32
+    }
+
+    pub fn r3_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 64 == 64
+    }
+
+    pub fn l3_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[1] & 128 == 128
+    }
+
+    pub fn gear_selector(&self) -> GearSelector {
+        match self.inner.read().unwrap().data.read().unwrap()[2] & 127 {
+            0 => GearSelector::Neutral,
+            1 => GearSelector::First,
+            2 => GearSelector::Second,
+            4 => GearSelector::Third,
+            8 => GearSelector::Fourth,
+            16 => GearSelector::Fifth,
+            32 => GearSelector::Sixth,
+            64 => GearSelector::Reverse,
+            _ => GearSelector::Neutral,
+        }
+    }
+
+    pub fn plus_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[2] & 128 == 128
+    }
+
+    pub fn minus_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[3] & 1 == 1
+    }
+
+    pub fn spinner_right(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[3] & 2 == 2
+    }
+
+    pub fn spinner_left(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[3] & 4 == 4
+    }
+
+    pub fn spinner_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[3] & 8 == 8
+    }
+
+    pub fn playstation_button(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[3] & 16 == 16
+    }
+
+    pub fn clutch(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[8]
+    }
+
+    pub fn shifter_x(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[9]
+    }
+
+    pub fn shifter_y(&self) -> u8 {
+        self.inner.read().unwrap().data.read().unwrap()[10]
+    }
+
+    pub fn shifter_pressed(&self) -> bool {
+        self.inner.read().unwrap().data.read().unwrap()[11] == 1
+    }
+
+    pub fn disconnect(&mut self) {
         self.force_off(0xf3);
-        self.set_leds(G29Led::None);
+        self.set_leds(Led::None);
         self.force_friction(0, 0);
         self.options.auto_center = [0x00, 0x00];
-        self.auto_center();
+        self.set_auto_center();
         let mut inner = self.inner.write().unwrap();
 
         inner
             .reader_handle
             .take()
             .and_then(|handle| handle.join().ok());
+
+        inner.reader_handle = None;
+    }
+}
+
+impl Drop for G29 {
+    fn drop(&mut self) {
+        self.disconnect();
     }
 }
