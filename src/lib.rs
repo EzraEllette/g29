@@ -1,3 +1,32 @@
+/// # G29
+/// A library for interfacing with the Logitech G29 Racing Wheel.
+///
+/// The Wheel should be placed in PS3 mode.
+///
+/// ## Example
+///
+/// ```rust
+/// use g29::{G29, Options};
+/// use std::time::Duration;
+/// use std::thread::sleep;
+///
+/// fn main() {
+///   let options = Options {
+///     debug: true,
+///     ..Default::default()
+///   };
+///
+///  let g29 = G29::connect(options);
+///
+/// loop {
+///   println!("Steering: {}", g29.steering());
+///   println!("Throttle: {}", g29.throttle());
+///   println!("Brake: {}", g29.brake());
+///   println!("Clutch: {}", g29.clutch());
+///   sleep(Duration::from_millis(100));
+/// }
+/// ```
+///    
 use hidapi::{DeviceInfo, HidApi};
 use std::{
     env::consts::OS,
@@ -8,8 +37,13 @@ use std::{
     time::Duration,
 };
 
+// The size of the data frame that the G29 sends
 const FRAME_SIZE: usize = 12;
 
+///
+/// DpadPosition
+///
+/// Represents the position of the Dpad on the G29
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum DpadPosition {
     Top,
@@ -23,6 +57,11 @@ pub enum DpadPosition {
     None,
 }
 
+///
+/// GearSelector
+///
+/// Represents the gear selected on the G29
+///
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum GearSelector {
     Neutral = 0,
@@ -35,6 +74,11 @@ pub enum GearSelector {
     Reverse = 64,
 }
 
+///
+/// Led
+///
+/// Represents the LED lights on the G29
+///
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Led {
@@ -75,6 +119,32 @@ impl BitOr for Led {
     }
 }
 
+///
+/// G29
+/// Establishes a connection to the Logitech G29 Racing Wheel and provides methods to interact with it.
+///
+/// # Example
+///
+/// ```rust
+/// use g29::{G29, Options, Led};
+/// use std::time::Duration;
+/// use std::thread::sleep;
+///
+/// fn main() {
+///    let options = Options {
+///      ..Default::default()
+///   };
+///
+///   let g29 = G29::connect(options);
+///
+///   g29.set_leds(Led::All);
+///
+///   sleep(Duration::from_secs(5));
+///
+///   g29.disconnect();
+/// }
+/// ```
+///
 #[derive(Debug)]
 pub struct G29 {
     options: Options,
@@ -90,6 +160,26 @@ struct InnerG29 {
     reader_handle: Option<thread::JoinHandle<()>>,
 }
 
+///
+/// Options
+/// The options that can be set when connecting to the G29
+/// - debug: `bool` - Enable debug mode (default: false)
+/// - range: `u16` - The range of the wheel (40 - 900) (default: 900)
+/// - auto_center: `[u8; 2]` - The auto center force and turning multiplier (default: [0x07, 0xff])
+/// - auto_center_enabled: `bool` - Enable auto centering (default: true)
+///
+/// # Example
+///
+/// ```rust
+/// use g29::Options;
+///
+/// let options = Options {
+///    range: 540,
+///    auto_center_enabled: false,
+///   ..Default::default()
+/// };
+/// ```
+///
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct Options {
     pub debug: bool,
@@ -126,6 +216,9 @@ fn get_wheel_info(api: &HidApi) -> DeviceInfo {
 }
 
 impl G29 {
+    ///
+    /// Connect to the G29 Racing Wheel
+    ///
     pub fn connect(options: Options) -> G29 {
         if options.debug {
             println!("userOptions -> {:?}", options);
@@ -380,18 +473,61 @@ impl G29 {
             );
     }
 
+    /// Set auto-center force.
+    ///
+    /// # Arguments
+    /// - `strength` - The strength of the auto-center force (**0x00** to **0x0f**)
+    /// - `turning_multiplier` - The rate the effect strength rises as the wheel turns (**0x00** to **0xff**)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use g29::{G29, Options};
+    ///
+    /// fn main() {
+    ///   let options = Options {
+    ///     ..Default::default()
+    ///   };
+    ///
+    ///
+    ///   let mut g29 = G29::connect(options);
+    ///
+    ///   g29.set_auto_center_force(0x0f, 0xff);
+    ///
+    ///   loop {}
+    /// }
+    /// ```
+    ///
     pub fn set_auto_center_force(&mut self, strength: u8, turning_multiplier: u8) {
-        /*
-            Set auto-center force.
-        */
-        // byte 3-4 is effect strength, 0x00 to 0x0f
-
-        // byte 5 is the rate the effect strength rises as the wheel turns, 0x00 to 0xff
         self.options.auto_center = [strength, turning_multiplier];
 
         self.set_auto_center();
     }
 
+    /// Set the LED lights on the G29.
+    /// # Arguments
+    /// - `leds` - The LED lights to set
+    /// # Example
+    /// ```rust
+    /// use g29::{G29, Options, Led};
+    /// use std::time::Duration;
+    /// use std::thread::sleep;
+    ///
+    /// fn main() {
+    ///   let options = Options {
+    ///     ..Default::default()
+    ///   };
+    ///
+    ///   let g29 = G29::connect(options);
+    ///
+    ///   loop {
+    ///     g29.set_leds(Led::All);
+    ///     sleep(Duration::from_secs(1));
+    ///     g29.set_leds(Led::Red | Led::GreenOne);
+    ///     sleep(Duration::from_secs(1));
+    ///   }
+    /// }
+    /// ````
     pub fn set_leds(&mut self, leds: Led) {
         /*
             Set the LED lights on the G29.
@@ -401,15 +537,33 @@ impl G29 {
         self.relay_os(data, "set_leds");
     }
 
+    /// Set the force feedback on the G29.
+    /// # Arguments
+    /// - `left` - The strength of the left motor (**0x00** to **0x07**)
+    /// - `right` - The strength of the right motor (**0x00** to **0x07**)
+    ///
+    /// # Example
+    /// ```rust
+    /// use g29::{G29, Options};
+    ///
+    /// fn main() {
+    ///   let options = Options {
+    ///     ..Default::default()
+    ///   };
+    ///
+    ///   let mut g29 = G29::connect(options);
+    ///
+    ///   g29.force_feedback(0x07, 0x07);
+    ///
+    ///   loop {}
+    /// }
+    /// ```
     pub fn force_friction(&self, mut left: u8, mut right: u8) {
         if left | right == 0 {
             self.force_off(2);
             return;
         }
 
-        // sending manual relay() commands to the hardware seems to reveal a 0x00 through 0x07 range
-        // 0x07 is the strongest friction and then 0x08 is no friction
-        // friction ramps up again from 0x08 to 0x0F
         left = left * 7;
         right = right * 7;
 
@@ -419,22 +573,34 @@ impl G29 {
         );
     } // forceFriction
 
+    /// Get the throttle value.
+    /// 0 is
     pub fn throttle(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[6]
     }
 
+    /// Get the brake value.
     pub fn brake(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[7]
     }
 
+    /// Get the steering value.
     pub fn steering(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[5]
     }
 
+    /// Get the fine steering value.
     pub fn steering_fine(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[4]
     }
 
+    /// Get the Dpad position.
+    /// # Example
+    /// ```rust
+    /// if g29.dpad() == DpadPosition::Top {
+    ///    println!("Dpad is at the top");
+    /// }
+    /// ````
     pub fn dpad(&self) -> DpadPosition {
         match self.inner.read().unwrap().data.read().unwrap()[0] & 15 {
             0 => DpadPosition::Top,
@@ -449,54 +615,76 @@ impl G29 {
         }
     }
 
+    /// Returns `true` if the x button is pressed.
     pub fn x_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[0] & 16 == 16
     }
 
+    /// Returns true if the square button is pressed.
     pub fn square_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[0] & 32 == 32
     }
 
+    /// Returns true if the circle button is pressed.
     pub fn circle_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[0] & 64 == 64
     }
 
+    /// Returns true if the triangle button is pressed.
     pub fn triangle_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[0] & 128 == 128
     }
 
+    /// returns true if the right shifter is pressed.
     pub fn right_shifter(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 1 == 1
     }
 
+    /// Returns true if the left shifter is pressed.
     pub fn left_shifter(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 2 == 2
     }
 
+    /// Returns true if the r2 button is pressed.
     pub fn r2_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 4 == 4
     }
 
+    /// Returns true if the l2 button is pressed.
     pub fn l2_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 8 == 8
     }
 
+    /// Returns true if the share button is pressed.
     pub fn share_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 16 == 16
     }
 
+    /// Returns true if the option button is pressed.
     pub fn option_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 32 == 32
     }
 
+    /// Returns true if the r3 button is pressed.
     pub fn r3_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 64 == 64
     }
 
+    /// Returns true if the l3 button is pressed.
     pub fn l3_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[1] & 128 == 128
     }
 
+    /// Get the gear selector position.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// if g29.gear_selector() == GearSelector::First {
+    ///    println!("Gear is in first");
+    /// }
+    /// ```
+    ///
     pub fn gear_selector(&self) -> GearSelector {
         match self.inner.read().unwrap().data.read().unwrap()[2] & 127 {
             0 => GearSelector::Neutral,
@@ -511,46 +699,75 @@ impl G29 {
         }
     }
 
+    /// Returns true if the plus button is pressed.
     pub fn plus_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[2] & 128 == 128
     }
 
+    /// Returns true if the minus button is pressed.
     pub fn minus_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[3] & 1 == 1
     }
 
+    /// Returns true if the spinner is rotating clockwise.
     pub fn spinner_right(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[3] & 2 == 2
     }
 
+    /// Returns true if the spinner is rotating counter-clockwise.
     pub fn spinner_left(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[3] & 4 == 4
     }
 
+    /// Returns true if the spinner button is pressed.
     pub fn spinner_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[3] & 8 == 8
     }
 
+    /// Returns true if the playstation button is pressed.
     pub fn playstation_button(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[3] & 16 == 16
     }
 
+    /// Returns the value of the clutch pedal. (0 - 255)
     pub fn clutch(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[8]
     }
 
+    /// Returns the value of the shifter x axis.
     pub fn shifter_x(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[9]
     }
 
+    /// Returns the value of the shifter y axis.
     pub fn shifter_y(&self) -> u8 {
         self.inner.read().unwrap().data.read().unwrap()[10]
     }
 
+    /// Returns true if the shifter is pressed.
     pub fn shifter_pressed(&self) -> bool {
         self.inner.read().unwrap().data.read().unwrap()[11] == 1
     }
 
+    /// Disconnect from the G29.
+    /// # Example
+    /// ```rust
+    /// use g29::{G29, Options};
+    /// use std::time::Duration;
+    /// use std::thread::sleep;
+    ///
+    /// fn main() {
+    ///   let options = Options {
+    ///     ..Default::default()
+    ///   };
+    ///
+    ///   let mut g29 = G29::connect(options);
+    ///   
+    ///   sleep(Duration::from_secs(5));
+    ///   
+    ///   g29.disconnect();
+    /// }
+    /// ```
     pub fn disconnect(&mut self) {
         self.force_off(0xf3);
         self.set_leds(Led::None);
