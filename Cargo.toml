@@ -9,3 +9,7 @@ license = "MIT"
 
 [dependencies]
 hidapi = { version = "2.6.1", features = ["macos-shared-device", "windows-native"] }
+
+[features]
+default = ["events"]
+events = []
