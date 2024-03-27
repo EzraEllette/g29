@@ -1,4 +1,6 @@
 use hidapi::{DeviceInfo, HidApi};
+#[cfg(feature = "events")]
+use rayon::prelude::*;
 use std::{
     collections::HashMap,
     env::consts::OS,
@@ -249,6 +251,7 @@ pub struct G29 {
     prepend_write: bool,
     inner: Arc<RwLock<InnerG29>>,
     calibrated: bool,
+    connected: bool,
 }
 
 #[derive(Debug)]
@@ -357,6 +360,7 @@ impl G29 {
             options,
             prepend_write,
             calibrated: false,
+            connected: true,
             inner: Arc::new(RwLock::new(InnerG29 {
                 wheel: Mutex::new(wheel),
                 data: Arc::new(RwLock::new([0; FRAME_SIZE])),
@@ -468,7 +472,7 @@ impl G29 {
                 {
                     let events = local_self_write.events(&prev_data, &new_data);
 
-                    events.iter().for_each(|event| {
+                    events.par_iter().for_each(|event| {
                         local_self_write
                             .event_handlers
                             .read()
@@ -889,14 +893,15 @@ impl G29 {
             .and_then(|handle| handle.join().ok());
 
         inner.reader_handle = None;
+        self.connected = false;
+    }
+
+    pub fn connected(&self) -> bool {
+        self.connected
     }
 
     #[cfg(feature = "events")]
-    pub fn register_event_handler(
-        &mut self,
-        event: Event,
-        handler: HandlerFn,
-    ) -> Option<EventHandler> {
+    pub fn register_event_handler(&self, event: Event, handler: HandlerFn) -> Option<EventHandler> {
         self.inner
             .write()
             .unwrap()
@@ -939,8 +944,8 @@ impl InnerG29 {
             return vec![];
         }
 
-        let mut events_to_trigger: Vec<Event> = vec![];
-        for index in different_indices {
+        let events_to_trigger = different_indices.par_iter().flat_map(|index| {
+            let mut events_to_trigger = vec![];
             match index {
                 0 => {
                     events_to_trigger.extend(self.dpad_events(prev_data, new_data));
@@ -960,9 +965,11 @@ impl InnerG29 {
                 10 => events_to_trigger.extend(self.shifter_y_event(prev_data, new_data)),
                 11 => events_to_trigger.extend(self.shifter_events(prev_data, new_data)),
                 _ => {}
-            }
-        }
-        events_to_trigger
+            };
+            events_to_trigger
+        });
+
+        events_to_trigger.collect()
     }
 
     fn dpad_events(&self, prev_data: &Frame, new_data: &Frame) -> Vec<Event> {
