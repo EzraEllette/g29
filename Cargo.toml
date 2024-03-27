@@ -2,10 +2,15 @@
 name = "g29"
 version = "0.1.0"
 edition = "2021"
-author="Ezra Ellette"
+author = "Ezra Ellette"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hidapi = { version = "2.6.1", features = ["macos-shared-device", "windows-native"] }
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
+hidapi = { version = "2.6.1", features = [
+  "macos-shared-device",
+  "windows-native",
+] }
+rayon = { version = "1.10.0" }

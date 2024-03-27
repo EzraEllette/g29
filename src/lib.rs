@@ -1,13 +1,20 @@
+use events::{Event, EventHandler, EventHandlers, HandlerFn};
 use hidapi::{DeviceInfo, HidApi};
+
+use rayon::prelude::*;
 use std::{
+    collections::HashMap,
     env::consts::OS,
     ops::BitOr,
     process::exit,
-    sync::{Arc, Mutex, RwLock},
+    sync::{atomic::AtomicBool, Arc, Mutex, RwLock},
     thread::{self, sleep},
     time::Duration,
 };
 
+pub mod events;
+// pub mod state;
+mod state;
 // The size of the data frame that the G29 sends
 const FRAME_SIZE: usize = 12;
 
@@ -17,16 +24,23 @@ const FRAME_SIZE: usize = 12;
 /// Represents the position of the Dpad on the G29
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum DpadPosition {
-    Top,
+    Up,
     TopRight,
     Right,
     BottomRight,
-    Bottom,
+    Down,
     BottomLeft,
     Left,
     TopLeft,
     None,
 }
+
+///
+/// Event
+/// Events that can be triggered by the G29
+///
+
+type Frame = [u8; FRAME_SIZE];
 
 ///
 /// GearSelector
@@ -90,6 +104,8 @@ impl BitOr for Led {
     }
 }
 
+static CONNECTED: AtomicBool = AtomicBool::new(false);
+
 ///
 /// G29
 /// Establishes a connection to the Logitech G29 Racing Wheel and provides methods to interact with it.
@@ -114,19 +130,21 @@ impl BitOr for Led {
 ///   g29.disconnect();
 /// ```
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct G29 {
     options: Options,
     prepend_write: bool,
-    inner: Arc<RwLock<InnerG29>>,
     calibrated: bool,
+    inner: Arc<RwLock<InnerG29>>,
 }
 
 #[derive(Debug)]
 struct InnerG29 {
-    data: Arc<RwLock<[u8; FRAME_SIZE]>>,
-    wheel: Mutex<hidapi::HidDevice>,
+    data: Arc<RwLock<Frame>>,
     reader_handle: Option<thread::JoinHandle<()>>,
+
+    event_handlers: HashMap<Event, RwLock<EventHandlers>>,
+    wheel: Option<Mutex<hidapi::HidDevice>>,
 }
 
 ///
@@ -149,7 +167,7 @@ struct InnerG29 {
 /// };
 /// ```
 ///
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Options {
     pub debug: bool,
     pub range: u16,
@@ -218,11 +236,14 @@ impl G29 {
             prepend_write,
             calibrated: false,
             inner: Arc::new(RwLock::new(InnerG29 {
-                wheel: Mutex::new(wheel),
+                wheel: Some(Mutex::new(wheel)),
                 data: Arc::new(RwLock::new([0; FRAME_SIZE])),
                 reader_handle: None,
+
+                event_handlers: HashMap::new(),
             })),
         };
+        CONNECTED.store(true, std::sync::atomic::Ordering::Release);
 
         g29.initialize();
 
@@ -231,9 +252,11 @@ impl G29 {
 
     fn initialize(&mut self) {
         self.inner
-            .write()
+            .read()
             .unwrap()
             .wheel
+            .as_ref()
+            .unwrap()
             .lock()
             .unwrap()
             .set_blocking_mode(false)
@@ -245,6 +268,8 @@ impl G29 {
             .read()
             .unwrap()
             .wheel
+            .as_ref()
+            .unwrap()
             .lock()
             .unwrap()
             .read(&mut data)
@@ -281,13 +306,19 @@ impl G29 {
 
     fn listen(&mut self, ready: bool) {
         if !ready {
-            let new_wheel = Mutex::new(
-                get_wheel_info(&HidApi::new().unwrap())
-                    .open_device(&HidApi::new().unwrap())
-                    .unwrap(),
-            );
+            let new_wheel = get_wheel_info(&HidApi::new().unwrap())
+                .open_device(&HidApi::new().unwrap())
+                .unwrap();
 
-            self.inner.write().unwrap().wheel = new_wheel;
+            *self
+                .inner
+                .read()
+                .unwrap()
+                .wheel
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap() = new_wheel;
 
             self.initialize();
             return;
@@ -301,21 +332,52 @@ impl G29 {
         }
 
         // use thread to listen for wheel events and trigger events
+        let self_1 = self.clone();
         let local_self = self.inner.clone();
-        let thread_handle = thread::spawn(move || loop {
-            let buf = &mut [0u8; FRAME_SIZE];
-            let size_read = local_self
-                .read()
-                .unwrap()
-                .wheel
-                .lock()
-                .unwrap()
-                .read(buf)
-                .expect("listen -> Error reading from device.");
-            if size_read == FRAME_SIZE {
-                let local_self_read = local_self.read().unwrap();
-                let mut data = local_self_read.data.write().unwrap();
-                *data = *buf;
+        let thread_handle = thread::spawn(move || {
+            while CONNECTED.load(std::sync::atomic::Ordering::Relaxed) {
+                let mut new_data = [0u8; FRAME_SIZE];
+                let size_read = local_self
+                    .read()
+                    .unwrap()
+                    .wheel
+                    .as_ref()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .read(&mut new_data)
+                    .expect("listen -> Error reading from device.");
+                if size_read == FRAME_SIZE {
+                    let local_self_write = local_self.read().unwrap();
+                    let mut prev_data = local_self_write.data.write().unwrap();
+
+                    if new_data == *prev_data {
+                        continue;
+                    }
+
+                    {
+                        let events = events::events(&prev_data, &new_data);
+
+                        events.par_iter().for_each(|event| {
+                            local_self_write
+                                .event_handlers
+                                .get(event)
+                                .par_iter()
+                                .for_each(|event_handlers| {
+                                    event_handlers.read().unwrap().handlers.par_iter().for_each(
+                                        |(_, event_handler)| {
+                                            let mut self_1 = self_1.clone();
+                                            let ev_clone = *event_handler; // Clone the event handler
+                                            thread::spawn(move || {
+                                                (ev_clone.handler)(&mut self_1);
+                                            });
+                                        },
+                                    );
+                                })
+                        });
+                    }
+                    *prev_data = new_data;
+                }
             }
         });
 
@@ -425,6 +487,8 @@ impl G29 {
             .read()
             .unwrap()
             .wheel
+            .as_ref()
+            .expect("relay_os -> Wheel not found")
             .lock()
             .unwrap()
             .write(if self.prepend_write { &new_data } else { &data })
@@ -487,7 +551,7 @@ impl G29 {
     ///     sleep(Duration::from_secs(1));
     ///   }
     /// ````
-    pub fn set_leds(&mut self, leds: Led) {
+    pub fn set_leds(&self, leds: Led) {
         /*
             Set the LED lights on the G29.
         */
@@ -531,24 +595,27 @@ impl G29 {
     }
 
     /// Get the throttle value.
-    /// 0 is
+    ///  255 is depressed, 0 is fully pressed
     pub fn throttle(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[6]
+        state::throttle(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Get the brake value.
+    ///  255 is depressed, 0 is fully pressed
     pub fn brake(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[7]
+        state::brake(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Get the steering value.
+    /// 255 is fully right, 0 is fully left
     pub fn steering(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[5]
+        state::steering(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Get the fine steering value.
+    /// 255 is fully right, 0 is fully left
     pub fn steering_fine(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[4]
+        state::steering_fine(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Get the Dpad position.
@@ -559,77 +626,67 @@ impl G29 {
     /// }
     /// ````
     pub fn dpad(&self) -> DpadPosition {
-        match self.inner.read().unwrap().data.read().unwrap()[0] & 15 {
-            0 => DpadPosition::Top,
-            1 => DpadPosition::TopRight,
-            2 => DpadPosition::Right,
-            3 => DpadPosition::BottomRight,
-            4 => DpadPosition::Bottom,
-            5 => DpadPosition::BottomLeft,
-            6 => DpadPosition::Left,
-            7 => DpadPosition::TopLeft,
-            _ => DpadPosition::None,
-        }
+        state::dpad(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns `true` if the x button is pressed.
     pub fn x_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[0] & 16 == 16
+        state::x_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the square button is pressed.
     pub fn square_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[0] & 32 == 32
+        state::square_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the circle button is pressed.
     pub fn circle_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[0] & 64 == 64
+        state::circle_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the triangle button is pressed.
     pub fn triangle_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[0] & 128 == 128
+        state::triangle_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// returns true if the right shifter is pressed.
     pub fn right_shifter(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 1 == 1
+        state::right_shifter(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the left shifter is pressed.
     pub fn left_shifter(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 2 == 2
+        state::left_shifter(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the r2 button is pressed.
     pub fn r2_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 4 == 4
+        state::r2_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the l2 button is pressed.
     pub fn l2_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 8 == 8
+        state::l2_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the share button is pressed.
     pub fn share_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 16 == 16
+        state::share_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the option button is pressed.
     pub fn option_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 32 == 32
+        state::option_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the r3 button is pressed.
     pub fn r3_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 64 == 64
+        state::r3_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the l3 button is pressed.
     pub fn l3_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[1] & 128 == 128
+        state::l3_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Get the gear selector position.
@@ -643,67 +700,58 @@ impl G29 {
     /// ```
     ///
     pub fn gear_selector(&self) -> GearSelector {
-        match self.inner.read().unwrap().data.read().unwrap()[2] & 127 {
-            0 => GearSelector::Neutral,
-            1 => GearSelector::First,
-            2 => GearSelector::Second,
-            4 => GearSelector::Third,
-            8 => GearSelector::Fourth,
-            16 => GearSelector::Fifth,
-            32 => GearSelector::Sixth,
-            64 => GearSelector::Reverse,
-            _ => GearSelector::Neutral,
-        }
+        state::gear_selector(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the plus button is pressed.
     pub fn plus_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[2] & 128 == 128
+        state::plus_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the minus button is pressed.
     pub fn minus_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[3] & 1 == 1
+        state::minus_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the spinner is rotating clockwise.
     pub fn spinner_right(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[3] & 2 == 2
+        state::spinner_right(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the spinner is rotating counter-clockwise.
     pub fn spinner_left(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[3] & 4 == 4
+        state::spinner_left(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the spinner button is pressed.
     pub fn spinner_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[3] & 8 == 8
+        state::spinner_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the playstation button is pressed.
     pub fn playstation_button(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[3] & 16 == 16
+        state::playstation_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
-    /// Returns the value of the clutch pedal. (0 - 255)
+    /// Returns the value of the clutch pedal.
+    /// 255 is depressed, 0 is fully pressed
     pub fn clutch(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[8]
+        state::clutch(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns the value of the shifter x axis.
     pub fn shifter_x(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[9]
+        state::shifter_x(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns the value of the shifter y axis.
     pub fn shifter_y(&self) -> u8 {
-        self.inner.read().unwrap().data.read().unwrap()[10]
+        state::shifter_y(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the shifter is pressed.
     pub fn shifter_pressed(&self) -> bool {
-        self.inner.read().unwrap().data.read().unwrap()[11] == 1
+        state::shifter_pressed(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Disconnect from the G29.
@@ -724,24 +772,52 @@ impl G29 {
     ///   g29.disconnect();
     /// ```
     pub fn disconnect(&mut self) {
+        if !self.connected() {
+            return;
+        }
+
         self.force_off(0xf3);
         self.set_leds(Led::None);
         self.force_friction(0, 0);
         self.options.auto_center = [0x00, 0x00];
         self.set_auto_center();
-        let mut inner = self.inner.write().unwrap();
 
-        inner
-            .reader_handle
-            .take()
-            .and_then(|handle| handle.join().ok());
+        // set connected to false
 
-        inner.reader_handle = None;
+        CONNECTED.store(false, std::sync::atomic::Ordering::Release);
+        self.inner.write().unwrap().wheel = None;
+        // join all threads
+        if let Some(handle) = self.inner.write().unwrap().reader_handle.take() {
+            handle.join().unwrap();
+        }
     }
-}
 
-impl Drop for G29 {
-    fn drop(&mut self) {
-        self.disconnect();
+    pub fn connected(&self) -> bool {
+        CONNECTED.load(std::sync::atomic::Ordering::Relaxed)
+            && self.inner.read().unwrap().wheel.is_some()
+    }
+
+    pub fn register_event_handler(&self, event: Event, handler: HandlerFn) -> Option<EventHandler> {
+        self.inner
+            .write()
+            .unwrap()
+            .event_handlers
+            .entry(event)
+            .or_insert_with(|| RwLock::new(EventHandlers::new(event)))
+            .write()
+            .unwrap()
+            .insert(handler)
+    }
+
+    pub fn unregister_event_handler(&mut self, event_handler: EventHandler) {
+        self.inner
+            .write()
+            .unwrap()
+            .event_handlers
+            .get_mut(&event_handler.event)
+            .map(|handlers| {
+                handlers.write().unwrap().handlers.remove(&event_handler.id);
+                Some(handlers)
+            });
     }
 }
