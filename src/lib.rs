@@ -101,7 +101,6 @@ impl BitOr for Led {
 /// use std::time::Duration;
 /// use std::thread::sleep;
 ///
-/// fn main() {
 ///    let options = Options {
 ///      ..Default::default()
 ///   };
@@ -113,7 +112,6 @@ impl BitOr for Led {
 ///   sleep(Duration::from_secs(5));
 ///
 ///   g29.disconnect();
-/// }
 /// ```
 ///
 #[derive(Debug)]
@@ -213,12 +211,7 @@ impl G29 {
             .set_blocking_mode(false)
             .expect("Failed to set non-blocking mode");
 
-        let prepend_write: bool = {
-            match OS {
-                "windows" => true,
-                _ => false,
-            }
-        };
+        let prepend_write: bool = { matches!(OS, "windows") };
 
         let mut g29 = G29 {
             options,
@@ -246,7 +239,7 @@ impl G29 {
             .set_blocking_mode(false)
             .expect("Failed to set non-blocking mode");
 
-        let mut data = [0 as u8; FRAME_SIZE];
+        let mut data = [0u8; FRAME_SIZE];
         let data_size = self
             .inner
             .read()
@@ -310,7 +303,7 @@ impl G29 {
         // use thread to listen for wheel events and trigger events
         let local_self = self.inner.clone();
         let thread_handle = thread::spawn(move || loop {
-            let buf = &mut [0 as u8; FRAME_SIZE];
+            let buf = &mut [0u8; FRAME_SIZE];
             let size_read = local_self
                 .read()
                 .unwrap()
@@ -435,13 +428,12 @@ impl G29 {
             .lock()
             .unwrap()
             .write(if self.prepend_write { &new_data } else { &data })
-            .expect(
-                format!(
+            .unwrap_or_else(|_| {
+                panic!(
                     "relay_os -> Error writing to device. Operation: {}",
                     operation
                 )
-                .as_str(),
-            );
+            });
     }
 
     /// Set auto-center force.
@@ -455,7 +447,6 @@ impl G29 {
     /// ```rust
     /// use g29::{G29, Options};
     ///
-    /// fn main() {
     ///   let options = Options {
     ///     ..Default::default()
     ///   };
@@ -466,7 +457,6 @@ impl G29 {
     ///   g29.set_auto_center_force(0x0f, 0xff);
     ///
     ///   loop {}
-    /// }
     /// ```
     ///
     pub fn set_auto_center_force(&mut self, strength: u8, turning_multiplier: u8) {
@@ -484,7 +474,6 @@ impl G29 {
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
-    /// fn main() {
     ///   let options = Options {
     ///     ..Default::default()
     ///   };
@@ -497,7 +486,6 @@ impl G29 {
     ///     g29.set_leds(Led::Red | Led::GreenOne);
     ///     sleep(Duration::from_secs(1));
     ///   }
-    /// }
     /// ````
     pub fn set_leds(&mut self, leds: Led) {
         /*
@@ -517,7 +505,6 @@ impl G29 {
     /// ```rust
     /// use g29::{G29, Options};
     ///
-    /// fn main() {
     ///   let options = Options {
     ///     ..Default::default()
     ///   };
@@ -527,7 +514,6 @@ impl G29 {
     ///   g29.force_feedback(0x07, 0x07);
     ///
     ///   loop {}
-    /// }
     /// ```
     pub fn force_friction(&self, mut left: u8, mut right: u8) {
         if left | right == 0 {
@@ -535,14 +521,14 @@ impl G29 {
             return;
         }
 
-        left = left * 7;
-        right = right * 7;
+        left *= 7;
+        right *= 7;
 
         self.relay_os(
             [0x21, 0x02, left, 0x00, right, 0x00, 0x00],
             "force_friction",
         );
-    } // forceFriction
+    }
 
     /// Get the throttle value.
     /// 0 is
@@ -727,7 +713,6 @@ impl G29 {
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
-    /// fn main() {
     ///   let options = Options {
     ///     ..Default::default()
     ///   };
@@ -737,7 +722,6 @@ impl G29 {
     ///   sleep(Duration::from_secs(5));
     ///   
     ///   g29.disconnect();
-    /// }
     /// ```
     pub fn disconnect(&mut self) {
         self.force_off(0xf3);
