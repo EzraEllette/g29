@@ -180,16 +180,16 @@ impl BitOr for Led {
 #[cfg(feature = "events")]
 #[derive(Debug, Copy, Clone)]
 pub struct EventHandler {
-    id: usize,
-    event: Event,
+    pub id: usize,
+    pub event: Event,
     handler: HandlerFn,
 }
 
 #[cfg(feature = "events")]
 #[derive(Debug)]
 struct EventHandlers {
-    event: Event,
-    next_id: usize,
+    pub event: Event,
+    pub next_id: usize,
     handlers: HashMap<usize, EventHandler>,
 }
 
@@ -203,13 +203,13 @@ impl EventHandlers {
         }
     }
 
-    fn insert(&mut self, handler: HandlerFn) -> Option<EventHandler> {
+    pub fn insert(&mut self, handler: HandlerFn) -> Option<EventHandler> {
         let id = self.next_id;
         self.next_id += 1;
 
         let event_handler = EventHandler {
             id,
-            event: self.event.clone(),
+            event: self.event,
             handler,
         };
 
@@ -474,9 +474,9 @@ impl G29 {
                             .read()
                             .unwrap()
                             .get(event)
-                            .and_then(|event_handlers| {
+                            .map(|event_handlers| {
                                 event_handlers.handlers.values().for_each(|event_handler| {
-                                    let ev_clone = event_handler.clone();
+                                    let ev_clone = *event_handler;
                                     let mut self_1 = self_1.clone();
                                     thread::spawn(move || {
                                         (ev_clone.handler)(&mut self_1);
@@ -890,6 +890,38 @@ impl G29 {
 
         inner.reader_handle = None;
     }
+
+    #[cfg(feature = "events")]
+    pub fn register_event_handler(
+        &mut self,
+        event: Event,
+        handler: HandlerFn,
+    ) -> Option<EventHandler> {
+        self.inner
+            .write()
+            .unwrap()
+            .event_handlers
+            .write()
+            .unwrap()
+            .entry(event)
+            .or_insert_with(|| EventHandlers::new(event))
+            .insert(handler)
+    }
+
+    #[cfg(feature = "events")]
+    pub fn unregister_event_handler(&mut self, event_handler: EventHandler) {
+        self.inner
+            .write()
+            .unwrap()
+            .event_handlers
+            .write()
+            .unwrap()
+            .get_mut(&event_handler.event)
+            .map(|handlers| {
+                handlers.handlers.remove(&event_handler.id);
+                Some(handlers)
+            });
+    }
 }
 
 impl Drop for G29 {
@@ -901,7 +933,7 @@ impl Drop for G29 {
 #[cfg(feature = "events")]
 impl InnerG29 {
     fn events(&self, prev_data: &Frame, new_data: &Frame) -> Vec<Event> {
-        let different_indices = different_indices(&prev_data, new_data);
+        let different_indices = different_indices(prev_data, new_data);
 
         if different_indices.is_empty() {
             return vec![];
@@ -1132,12 +1164,10 @@ impl InnerG29 {
         let new_plus_button = state::plus_button(new_data);
         if prev_plus_button == new_plus_button {
             vec![]
+        } else if new_plus_button {
+            vec![Event::PlusButtonPressed]
         } else {
-            if new_plus_button {
-                vec![Event::PlusButtonPressed]
-            } else {
-                vec![Event::PlusButtonReleased]
-            }
+            vec![Event::PlusButtonReleased]
         }
     }
 
@@ -1164,18 +1194,14 @@ impl InnerG29 {
 
         let prev_spinner_right = state::spinner_right(prev_data);
         let new_spinner_right = state::spinner_right(new_data);
-        if prev_spinner_right != new_spinner_right {
-            if new_spinner_right {
-                events.push(Event::SpinnerRight);
-            }
+        if prev_spinner_right != new_spinner_right && new_spinner_right {
+            events.push(Event::SpinnerRight);
         }
 
         let prev_spinner_left = state::spinner_left(prev_data);
         let new_spinner_left = state::spinner_left(new_data);
-        if prev_spinner_left != new_spinner_left {
-            if new_spinner_left {
-                events.push(Event::SpinnerLeft);
-            }
+        if prev_spinner_left != new_spinner_left && new_spinner_left {
+            events.push(Event::SpinnerLeft);
         }
 
         let prev_spinner_button = state::spinner_button(prev_data);
@@ -1280,12 +1306,10 @@ impl InnerG29 {
 
         if prev_shifter_pressed == new_shifter_pressed {
             vec![]
+        } else if new_shifter_pressed {
+            vec![Event::ShifterPressed]
         } else {
-            if new_shifter_pressed {
-                vec![Event::ShifterPressed]
-            } else {
-                vec![Event::ShifterReleased]
-            }
+            vec![Event::ShifterReleased]
         }
     }
 }
