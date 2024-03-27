@@ -21,10 +21,12 @@ use g29::{G29, Options};
 fn main {
   let g29 = G29::connect(Options::default());
 
-  loop {
+  g29.register_event_handler(g29::events::Event::OptionButtonReleased, |g29| {
+    g29.disconnect();
+  });
+
+  while g29.connected() {
     println!("Throttle: {:?}", g29.throttle());
   }
 }
 ```
-
-### Buy me a coffee
