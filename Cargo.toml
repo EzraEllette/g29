@@ -8,15 +8,9 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam = { version = "0.8.4", features = [
-  "crossbeam-channel",
-], optional = true }
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 hidapi = { version = "2.6.1", features = [
   "macos-shared-device",
   "windows-native",
 ] }
-rayon = { version = "1.10.0", optional = true }
-
-[features]
-default = ["events"]
-events = ["crossbeam", "rayon"]
+rayon = { version = "1.10.0" }
