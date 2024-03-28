@@ -1,4 +1,4 @@
-use events::{Event, EventHandler, EventHandlers, HandlerFn};
+use events::{Event, EventHandler, EventHandlers, EventMap, HandlerFn};
 use hidapi::{DeviceInfo, HidApi};
 
 use rayon::prelude::*;
@@ -143,7 +143,7 @@ struct InnerG29 {
     data: Arc<RwLock<Frame>>,
     reader_handle: Option<thread::JoinHandle<()>>,
 
-    event_handlers: HashMap<Event, RwLock<EventHandlers>>,
+    event_handlers: EventMap,
     wheel: Option<Mutex<hidapi::HidDevice>>,
 }
 
@@ -239,8 +239,7 @@ impl G29 {
                 wheel: Some(Mutex::new(wheel)),
                 data: Arc::new(RwLock::new([0; FRAME_SIZE])),
                 reader_handle: None,
-
-                event_handlers: HashMap::new(),
+                event_handlers: EventMap::new(),
             })),
         };
         CONNECTED.store(true, std::sync::atomic::Ordering::Release);
@@ -332,7 +331,7 @@ impl G29 {
         }
 
         // use thread to listen for wheel events and trigger events
-        let self_1 = self.clone();
+        let mut self_1 = self.clone();
         let local_self = self.inner.clone();
         let thread_handle = thread::spawn(move || {
             while CONNECTED.load(std::sync::atomic::Ordering::Relaxed) {
@@ -355,27 +354,12 @@ impl G29 {
                         continue;
                     }
 
-                    {
-                        let events = events::events(&prev_data, &new_data);
+                    local_self_write.event_handlers.trigger_events(
+                        &prev_data,
+                        &new_data,
+                        &mut self_1,
+                    );
 
-                        events.par_iter().for_each(|event| {
-                            local_self_write
-                                .event_handlers
-                                .get(event)
-                                .par_iter()
-                                .for_each(|event_handlers| {
-                                    event_handlers.read().unwrap().handlers.par_iter().for_each(
-                                        |(_, event_handler)| {
-                                            let mut self_1 = self_1.clone();
-                                            let ev_clone = *event_handler; // Clone the event handler
-                                            thread::spawn(move || {
-                                                (ev_clone.handler)(&mut self_1);
-                                            });
-                                        },
-                                    );
-                                })
-                        });
-                    }
                     *prev_data = new_data;
                 }
             }
@@ -802,11 +786,7 @@ impl G29 {
             .write()
             .unwrap()
             .event_handlers
-            .entry(event)
-            .or_insert_with(|| RwLock::new(EventHandlers::new(event)))
-            .write()
-            .unwrap()
-            .insert(handler)
+            .insert(event, handler)
     }
 
     pub fn unregister_event_handler(&mut self, event_handler: EventHandler) {
@@ -814,10 +794,6 @@ impl G29 {
             .write()
             .unwrap()
             .event_handlers
-            .get_mut(&event_handler.event)
-            .map(|handlers| {
-                handlers.write().unwrap().handlers.remove(&event_handler.id);
-                Some(handlers)
-            });
+            .remove(event_handler);
     }
 }
