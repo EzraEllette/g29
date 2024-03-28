@@ -559,7 +559,7 @@ impl G29 {
     ///
     ///   let mut g29 = G29::connect(options);
     ///
-    ///   g29.force_feedback(0x07, 0x07);
+    ///   g29.force_friction(0x07, 0x07);
     ///
     ///   loop {}
     /// ```
@@ -660,7 +660,7 @@ impl G29 {
 
     /// Returns true if the option button is pressed.
     pub fn option_button(&self) -> bool {
-        state::option_button(&self.inner.read().unwrap().data.read().unwrap())
+        state::options_button(&self.inner.read().unwrap().data.read().unwrap())
     }
 
     /// Returns true if the r3 button is pressed.

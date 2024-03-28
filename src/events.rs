@@ -327,8 +327,8 @@ impl EventMap {
             }
         }
 
-        let prev_option_button = state::option_button(prev_data);
-        let new_option_button = state::option_button(new_data);
+        let prev_option_button = state::options_button(prev_data);
+        let new_option_button = state::options_button(new_data);
         if prev_option_button != new_option_button {
             if new_option_button {
                 self.trigger(Event::OptionsButtonPressed, g29);

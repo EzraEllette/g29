@@ -86,7 +86,7 @@ pub fn share_button(data: &[u8; 12]) -> bool {
 }
 
 /// Returns true if the option button is pressed.
-pub fn option_button(data: &[u8; 12]) -> bool {
+pub fn options_button(data: &[u8; 12]) -> bool {
     data[1] & 32 == 32
 }
 
@@ -172,4 +172,389 @@ pub fn shifter_y(data: &[u8; 12]) -> u8 {
 /// Returns true if the shifter is pressed.
 pub fn shifter_pressed(data: &[u8; 12]) -> bool {
     data[11] == 1
+}
+
+mod tests {
+    #[cfg(test)]
+    fn get_test_state() -> [u8; 12] {
+        [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ]
+    }
+
+    #[test]
+    fn test_throttle() {
+        let mut state = get_test_state();
+        state[6] = 0;
+
+        assert_eq!(crate::state::throttle(&state), 0);
+
+        state[6] = 255;
+        assert_eq!(crate::state::throttle(&state), 255);
+
+        state[6] = 128;
+        assert_eq!(crate::state::throttle(&state), 128);
+    }
+
+    #[test]
+    fn test_brake() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::brake(&state), 0);
+
+        state[7] = 255;
+        assert_eq!(crate::state::brake(&state), 255);
+
+        state[7] = 128;
+        assert_eq!(crate::state::brake(&state), 128);
+    }
+
+    #[test]
+    fn test_steering() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::steering(&state), 0);
+
+        state[5] = 255;
+        assert_eq!(crate::state::steering(&state), 255);
+
+        state[5] = 128;
+        assert_eq!(crate::state::steering(&state), 128);
+    }
+
+    #[test]
+    fn test_steering_fine() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::steering_fine(&state), 0);
+
+        state[4] = 255;
+        assert_eq!(crate::state::steering_fine(&state), 255);
+
+        state[4] = 128;
+        assert_eq!(crate::state::steering_fine(&state), 128);
+    }
+
+    #[test]
+    fn test_dpad() {
+        let mut state = get_test_state();
+        state[0] |= 240;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::Up);
+
+        state[0] = 240 | 1;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::TopRight);
+
+        state[0] = 240 | 2;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::Right);
+
+        state[0] = 240 | 3;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::BottomRight);
+
+        state[0] = 240 | 4;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::Down);
+
+        state[0] = 240 | 5;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::BottomLeft);
+
+        state[0] = 240 | 6;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::Left);
+
+        state[0] = 240 | 7;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::TopLeft);
+
+        state[0] = 240 | 8;
+        assert_eq!(crate::state::dpad(&state), crate::DpadPosition::None);
+    }
+
+    #[test]
+    fn test_x_button() {
+        let mut state = get_test_state();
+        state[0] |= 240;
+        assert!(crate::state::x_button(&state));
+
+        state[0] ^= 16;
+        assert!(!crate::state::x_button(&state));
+    }
+
+    #[test]
+    fn test_square_button() {
+        let mut state = get_test_state();
+        state[0] |= 240;
+
+        assert!(crate::state::square_button(&state));
+
+        state[0] ^= 32;
+        assert!(!crate::state::square_button(&state));
+    }
+
+    #[test]
+    fn test_circle_button() {
+        let mut state = get_test_state();
+        state[0] |= 240;
+
+        assert!(crate::state::circle_button(&state));
+
+        state[0] ^= 64;
+        assert!(!crate::state::circle_button(&state));
+    }
+
+    #[test]
+    fn test_triangle_button() {
+        let mut state = get_test_state();
+        state[0] |= 240;
+
+        assert!(crate::state::triangle_button(&state));
+
+        state[0] ^= 128;
+        assert!(!crate::state::triangle_button(&state));
+    }
+
+    #[test]
+    fn test_right_shifter() {
+        let mut state = get_test_state();
+        state[1] |= 15;
+
+        assert!(crate::state::right_shifter(&state));
+
+        state[1] ^= 1;
+        assert!(!crate::state::right_shifter(&state));
+    }
+
+    #[test]
+    fn test_left_shifter() {
+        let mut state = get_test_state();
+        state[1] |= 15;
+
+        assert!(crate::state::left_shifter(&state));
+
+        state[1] ^= 2;
+        assert!(!crate::state::left_shifter(&state));
+    }
+
+    #[test]
+    fn test_r2_button() {
+        let mut state = get_test_state();
+        state[1] |= 15;
+
+        assert!(crate::state::r2_button(&state));
+
+        state[1] ^= 4;
+        assert!(!crate::state::r2_button(&state));
+    }
+
+    #[test]
+    fn test_l2_button() {
+        let mut state = get_test_state();
+        state[1] |= 15;
+
+        assert!(crate::state::l2_button(&state));
+
+        state[1] ^= 8;
+        assert!(!crate::state::l2_button(&state));
+    }
+
+    #[test]
+    fn test_share_button() {
+        let mut state = get_test_state();
+        state[1] |= 240;
+
+        assert!(crate::state::share_button(&state));
+
+        state[1] ^= 16;
+        assert!(!crate::state::share_button(&state));
+    }
+
+    #[test]
+    fn test_options_button() {
+        let mut state = get_test_state();
+        state[1] |= 240;
+
+        assert!(crate::state::options_button(&state));
+
+        state[1] ^= 32;
+        assert!(!crate::state::options_button(&state));
+    }
+
+    #[test]
+    fn test_r3_button() {
+        let mut state = get_test_state();
+        state[1] |= 240;
+
+        assert!(crate::state::r3_button(&state));
+
+        state[1] ^= 64;
+        assert!(!crate::state::r3_button(&state));
+    }
+
+    #[test]
+    fn test_l3_button() {
+        let mut state = get_test_state();
+        state[1] |= 240;
+
+        assert!(crate::state::l3_button(&state));
+
+        state[1] ^= 128;
+        assert!(!crate::state::l3_button(&state));
+    }
+
+    #[test]
+    fn test_gear_selector() {
+        let mut state = get_test_state();
+        state[2] |= 128;
+
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Neutral
+        );
+
+        state[2] = 128 | 1;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::First
+        );
+
+        state[2] = 128 | 2;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Second
+        );
+
+        state[2] = 128 | 4;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Third
+        );
+
+        state[2] = 128 | 8;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Fourth
+        );
+
+        state[2] = 128 | 16;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Fifth
+        );
+
+        state[2] = 128 | 32;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Sixth
+        );
+
+        state[2] = 128 | 64;
+        assert_eq!(
+            crate::state::gear_selector(&state),
+            crate::GearSelector::Reverse
+        );
+    }
+
+    #[test]
+    fn test_plus_button() {
+        let mut state = get_test_state();
+        state[2] |= 128;
+
+        assert!(crate::state::plus_button(&state));
+
+        state[2] ^= 128;
+        assert!(!crate::state::plus_button(&state));
+    }
+
+    #[test]
+    fn test_minus_button() {
+        let mut state = get_test_state();
+        state[3] |= 15;
+
+        assert!(crate::state::minus_button(&state));
+
+        state[3] ^= 1;
+        assert!(!crate::state::minus_button(&state));
+    }
+
+    #[test]
+    fn test_spinner_right() {
+        let mut state = get_test_state();
+        state[3] |= 15;
+
+        assert!(crate::state::spinner_right(&state));
+
+        state[3] ^= 2;
+        assert!(!crate::state::spinner_right(&state));
+    }
+
+    #[test]
+    fn test_spinner_left() {
+        let mut state = get_test_state();
+        state[3] |= 15;
+
+        assert!(crate::state::spinner_left(&state));
+
+        state[3] ^= 4;
+        assert!(!crate::state::spinner_left(&state));
+    }
+
+    #[test]
+    fn test_spinner_button() {
+        let mut state = get_test_state();
+        state[3] |= 15;
+
+        assert!(crate::state::spinner_button(&state));
+
+        state[3] ^= 8;
+        assert!(!crate::state::spinner_button(&state));
+    }
+
+    #[test]
+    fn test_playstation_button() {
+        let mut state = get_test_state();
+        state[3] |= 240;
+
+        assert!(crate::state::playstation_button(&state));
+
+        state[3] ^= 16;
+        assert!(!crate::state::playstation_button(&state));
+    }
+
+    #[test]
+    fn test_clutch() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::clutch(&state), 0);
+
+        state[8] = 255;
+        assert_eq!(crate::state::clutch(&state), 255);
+
+        state[8] = 128;
+        assert_eq!(crate::state::clutch(&state), 128);
+    }
+
+    #[test]
+    fn test_shifter_x() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::shifter_x(&state), 0);
+
+        state[9] = 255;
+        assert_eq!(crate::state::shifter_x(&state), 255);
+
+        state[9] = 128;
+        assert_eq!(crate::state::shifter_x(&state), 128);
+    }
+
+    #[test]
+    fn test_shifter_y() {
+        let mut state = get_test_state();
+        assert_eq!(crate::state::shifter_y(&state), 0);
+
+        state[10] = 255;
+        assert_eq!(crate::state::shifter_y(&state), 255);
+
+        state[10] = 128;
+        assert_eq!(crate::state::shifter_y(&state), 128);
+    }
+
+    #[test]
+    fn test_shifter_pressed() {
+        let mut state = get_test_state();
+        assert!(!crate::state::shifter_pressed(&state));
+
+        state[11] = 1;
+        assert!(crate::state::shifter_pressed(&state));
+    }
 }
