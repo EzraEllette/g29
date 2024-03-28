@@ -11,22 +11,44 @@ Thanks to @nightmode for their NodeJS library that I frequently referenced. [log
 
 ## Features
 
-- Events (coming soon)
+- Events (help me make this more performant)
 
 ## Example
 
 ```rust
-use g29::{G29, Options};
+use g29::{Options, G29};
 
-fn main {
-  let g29 = G29::connect(Options::default());
+fn main() {
+    let g29 = G29::connect(Options::default());
 
-  g29.register_event_handler(g29::events::Event::OptionButtonReleased, |g29| {
+    g29.register_event_handler(
+        g29::events::Event::PlaystationButtonReleased,
+        playstation_button_released_handler,
+    );
+
+    g29.register_event_handler(g29::events::Event::Throttle, throttle_handler);
+
+    g29.register_event_handler(g29::events::Event::Brake, brake_handler);
+
+    g29.register_event_handler(g29::events::Event::Clutch, clutch_handler);
+
+    while g29.connected() {}
+}
+
+fn playstation_button_released_handler(g29: &mut G29) {
     g29.disconnect();
-  });
+    println!("Playstation button released");
+}
 
-  while g29.connected() {
-    println!("Throttle: {:?}", g29.throttle());
-  }
+fn throttle_handler(g29: &mut G29) {
+    println!("Throttle: {}", g29.throttle());
+}
+
+fn brake_handler(g29: &mut G29) {
+    println!("Brake: {}", g29.brake());
+}
+
+fn clutch_handler(g29: &mut G29) {
+    println!("Clutch: {}", g29.clutch());
 }
 ```
