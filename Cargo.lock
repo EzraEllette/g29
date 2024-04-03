@@ -46,14 +46,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
 
 [[package]]
-name = "g29"
-version = "1.0.0"
-dependencies = [
- "hidapi",
- "rayon",
-]
-
-[[package]]
 name = "hidapi"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -64,6 +56,14 @@ dependencies = [
  "libc",
  "pkg-config",
  "windows-sys",
+]
+
+[[package]]
+name = "lib-g29"
+version = "1.0.0"
+dependencies = [
+ "hidapi",
+ "rayon",
 ]
 
 [[package]]
