@@ -328,12 +328,12 @@ impl G29 {
         }
 
         // use thread to listen for wheel events and trigger events
-        let mut self_1 = self.clone();
+        let mut g29_clone = self.clone();
         let local_self = self.inner.clone();
         let thread_handle = thread::spawn(move || {
             while CONNECTED.load(std::sync::atomic::Ordering::Relaxed) {
                 let mut new_data = [0u8; FRAME_SIZE];
-                let size_read = local_self
+                match local_self
                     .read()
                     .unwrap()
                     .wheel
@@ -342,26 +342,36 @@ impl G29 {
                     .lock()
                     .unwrap()
                     .read(&mut new_data)
-                    .expect("listen -> Error reading from device.");
-                if size_read == FRAME_SIZE {
-                    let local_self_write = local_self.read().unwrap();
-                    let mut prev_data = local_self_write.data.write().unwrap();
+                {
+                    Ok(size_read) if size_read == FRAME_SIZE => {
+                        let local_self_write = local_self.read().unwrap();
+                        let mut prev_data = local_self_write.data.write().unwrap();
 
-                    if new_data == *prev_data {
-                        continue;
+                        if new_data == *prev_data {
+                            continue;
+                        }
+
+                        local_self_write.event_handlers.trigger_events(
+                            &prev_data,
+                            &new_data,
+                            &mut g29_clone,
+                        );
+
+                        *prev_data = new_data;
                     }
-
-                    local_self_write.event_handlers.trigger_events(
-                        &prev_data,
-                        &new_data,
-                        &mut self_1,
-                    );
-
-                    *prev_data = new_data;
-                }
+                    Ok(_) => {
+                        if g29_clone.options.debug {
+                            println!("listen -> Incomplete data read from device.");
+                        }
+                    }
+                    Err(e) => {
+                        if g29_clone.options.debug {
+                            println!("listen -> Error reading from device: {:?}", e);
+                        }
+                    }
+                };
             }
         });
-
         self.inner.write().unwrap().reader_handle = Some(thread_handle);
     }
 
