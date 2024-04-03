@@ -3,6 +3,14 @@ name = "g29"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
+authors = ["Ezra Ellette"]
+description = "A library for interfacing with the Logitech G29 racing wheel"
+repository = "https://github.com/EzraEllette/g29"
+keywords = ["g29", "logitech", "racing", "wheel", "controller"]
+publish = ["crates.io"]
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [lib]
 doctest = false
@@ -14,6 +22,3 @@ hidapi = { version = "2.6.1", features = [
   "windows-native",
 ] }
 rayon = { version = "1.10.0" }
-
-[badges.maintenance]
-status = "actively-developed"

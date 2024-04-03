@@ -1,4 +1,3 @@
-#![doc(html_root_url = "https://docs.rs/g29/1.0.0")]
 use events::{Event, EventHandler, EventMap, HandlerFn};
 use hidapi::{DeviceInfo, HidApi};
 
