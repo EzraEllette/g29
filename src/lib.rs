@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/g29/1.0.0")]
 use events::{Event, EventHandler, EventMap, HandlerFn};
 use hidapi::{DeviceInfo, HidApi};
 
@@ -145,12 +146,11 @@ struct InnerG29 {
 }
 
 ///
-/// Options
 /// The options that can be set when connecting to the G29
-/// - debug: `bool` - Enable debug mode (default: false)
-/// - range: `u16` - The range of the wheel (40 - 900) (default: 900)
-/// - auto_center: `[u8; 2]` - The auto center force and turning multiplier (default: [0x07, 0xff])
-/// - auto_center_enabled: `bool` - Enable auto centering (default: true)
+/// - debug: `bool` - Enable debug mode (default: `false`)
+/// - range: `u16` - The range of the wheel (40 - 900) (default: `900`)
+/// - auto_center: `[u8; 2]` - The auto center force and turning multiplier (default: `[0x07, 0xff]`)
+/// - auto_center_enabled: `bool` - Enable auto centering (default: `true`)
 ///
 /// # Example
 ///
@@ -788,6 +788,33 @@ impl G29 {
             && self.inner.read().unwrap().wheel.is_some()
     }
 
+    ///
+    /// Register an event handler for a specific event.
+    /// # Arguments
+    /// - `event` - The event to register the handler for
+    /// - `handler` - The handler function
+    /// # Example
+    /// ```rust
+    /// use g29::{G29, Options, Event, EventHandler};
+    /// use std::time::Duration;
+    /// use std::thread::sleep;
+    ///
+    ///  let options = Options {
+    ///   ..Default::default()
+    /// };
+    ///
+    /// let g29 = G29::connect(options);
+    ///
+    /// let handler: EventHandler = g29.register_event_handler(Event::Steering, |g29| {
+    ///    println!("Steering: {}", g29.steering());
+    /// });
+    ///
+    /// sleep(Duration::from_secs(5));
+    ///
+    /// g29.unregister_event_handler(handler);
+    ///
+    /// g29.disconnect();
+    /// ```
     pub fn register_event_handler(&self, event: Event, handler: HandlerFn) -> Option<EventHandler> {
         self.inner
             .write()
@@ -796,6 +823,32 @@ impl G29 {
             .insert(event, handler)
     }
 
+    ///
+    /// Unregister an event handler for a specific event.
+    /// # Arguments
+    /// - `event_handler` - The event handler to unregister
+    /// # Example
+    /// ```rust
+    /// use g29::{G29, Options, Event, EventHandler};
+    /// use std::time::Duration;
+    /// use std::thread::sleep;
+    ///
+    ///  let options = Options {
+    ///   ..Default::default()
+    /// };
+    ///
+    /// let g29 = G29::connect(options);
+    ///
+    /// let handler: EventHandler = g29.register_event_handler(Event::Steering, |g29| {
+    ///    println!("Steering: {}", g29.steering());
+    /// });
+    ///
+    /// sleep(Duration::from_secs(5));
+    ///
+    /// g29.unregister_event_handler(handler);
+    ///
+    /// g29.disconnect();
+    /// ```
     pub fn unregister_event_handler(&mut self, event_handler: EventHandler) {
         self.inner
             .write()
