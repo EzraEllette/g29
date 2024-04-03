@@ -10,7 +10,7 @@ Thanks to @nightmode for their NodeJS library that I frequently referenced. [log
 ## Example
 
 ```rust
-use g29::{Options, G29};
+use lib_g29::{Options, G29, events::Event};
 
 fn main() {
     let g29 = G29::connect(Options::default());
@@ -20,11 +20,11 @@ fn main() {
         playstation_button_released_handler,
     );
 
-    g29.register_event_handler(g29::events::Event::Throttle, throttle_handler);
+    g29.register_event_handler(Event::Throttle, throttle_handler);
 
-    g29.register_event_handler(g29::events::Event::Brake, brake_handler);
+    g29.register_event_handler(Event::Brake, brake_handler);
 
-    g29.register_event_handler(g29::events::Event::Clutch, clutch_handler);
+    g29.register_event_handler(Event::Clutch, clutch_handler);
 
     while g29.connected() {}
 }
