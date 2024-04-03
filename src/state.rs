@@ -22,7 +22,7 @@ pub fn steering_fine(data: &[u8; 12]) -> u8 {
 /// Get the Dpad position.
 /// # Example
 /// ```rust
-/// if g29.dpad() == DpadPosition::Top {
+/// if g29.dpad() == DpadPosition::Up {
 ///    println!("Dpad is at the top");
 /// }
 /// ````
@@ -174,8 +174,8 @@ pub fn shifter_pressed(data: &[u8; 12]) -> bool {
     data[11] == 1
 }
 
+#[cfg(test)]
 mod tests {
-    #[cfg(test)]
     fn get_test_state() -> [u8; 12] {
         [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

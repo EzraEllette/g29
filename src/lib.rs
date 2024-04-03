@@ -1,9 +1,7 @@
-use events::{Event, EventHandler, EventHandlers, EventMap, HandlerFn};
+use events::{Event, EventHandler, EventMap, HandlerFn};
 use hidapi::{DeviceInfo, HidApi};
 
-use rayon::prelude::*;
 use std::{
-    collections::HashMap,
     env::consts::OS,
     ops::BitOr,
     process::exit,
@@ -142,7 +140,6 @@ pub struct G29 {
 struct InnerG29 {
     data: Arc<RwLock<Frame>>,
     reader_handle: Option<thread::JoinHandle<()>>,
-
     event_handlers: EventMap,
     wheel: Option<Mutex<hidapi::HidDevice>>,
 }

@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use std::{collections::HashMap, sync::RwLock, thread};
 
-use crate::{state, DpadPosition, Frame, GearSelector, G29};
+use crate::{state, DpadPosition, Frame, G29};
 
 pub type HandlerFn = fn(g29: &mut G29);
 
@@ -235,127 +235,85 @@ impl EventMap {
     }
 
     fn trigger_shape_button_events(&self, prev_data: &Frame, new_data: &Frame, g29: &mut G29) {
-        let prev_x_button = state::x_button(prev_data);
-        let new_x_button = state::x_button(new_data);
-        if prev_x_button != new_x_button {
-            if new_x_button {
-                self.trigger(Event::XButtonPressed, g29);
-            } else {
-                self.trigger(Event::XButtonReleased, g29);
-            }
-        }
+        [
+            (Event::XButtonPressed, Event::XButtonReleased),
+            (Event::SquareButtonPressed, Event::SquareButtonReleased),
+            (Event::CircleButtonPressed, Event::CircleButtonReleased),
+            (Event::TriangleButtonPressed, Event::TriangleButtonReleased),
+        ]
+        .par_iter()
+        .for_each_with(g29.clone(), |g, (pressed, released)| {
+            let prev = match pressed {
+                Event::XButtonPressed => state::x_button(prev_data),
+                Event::SquareButtonPressed => state::square_button(prev_data),
+                Event::CircleButtonPressed => state::circle_button(prev_data),
+                Event::TriangleButtonPressed => state::triangle_button(prev_data),
+                _ => false,
+            };
 
-        let prev_square_button = state::square_button(prev_data);
-        let new_square_button = state::square_button(new_data);
-        if prev_square_button != new_square_button {
-            if new_square_button {
-                self.trigger(Event::SquareButtonPressed, g29);
-            } else {
-                self.trigger(Event::SquareButtonReleased, g29);
-            }
-        }
+            let new = match pressed {
+                Event::XButtonPressed => state::x_button(new_data),
+                Event::SquareButtonPressed => state::square_button(new_data),
+                Event::CircleButtonPressed => state::circle_button(new_data),
+                Event::TriangleButtonPressed => state::triangle_button(new_data),
+                _ => false,
+            };
 
-        let prev_circle_button = state::circle_button(prev_data);
-        let new_circle_button = state::circle_button(new_data);
-        if prev_circle_button != new_circle_button {
-            if new_circle_button {
-                self.trigger(Event::CircleButtonPressed, g29);
-            } else {
-                self.trigger(Event::CircleButtonReleased, g29);
+            if prev != new {
+                if new {
+                    self.trigger(*pressed, g);
+                } else {
+                    self.trigger(*released, g);
+                }
             }
-        }
-
-        let prev_triangle_button = state::triangle_button(prev_data);
-        let new_triangle_button = state::triangle_button(new_data);
-        if prev_triangle_button != new_triangle_button {
-            if new_triangle_button {
-                self.trigger(Event::TriangleButtonPressed, g29);
-            } else {
-                self.trigger(Event::TriangleButtonReleased, g29);
-            }
-        }
+        });
     }
 
     fn trigger_data1_button_events(&self, prev_data: &Frame, new_data: &Frame, g29: &mut G29) {
-        let prev_right_shifter = state::right_shifter(prev_data);
-        let new_right_shifter = state::right_shifter(new_data);
-        if prev_right_shifter != new_right_shifter {
-            if new_right_shifter {
-                self.trigger(Event::RightShifterPressed, g29);
-            } else {
-                self.trigger(Event::RightShifterReleased, g29);
-            }
-        }
+        [
+            (Event::RightShifterPressed, Event::RightShifterReleased),
+            (Event::LeftShifterPressed, Event::LeftShifterReleased),
+            (Event::R2ButtonPressed, Event::R2ButtonReleased),
+            (Event::L2ButtonPressed, Event::L2ButtonReleased),
+            (Event::ShareButtonPressed, Event::ShareButtonReleased),
+            (Event::OptionsButtonPressed, Event::OptionsButtonReleased),
+            (Event::R3ButtonPressed, Event::R3ButtonReleased),
+            (Event::L3ButtonPressed, Event::L3ButtonReleased),
+        ]
+        .par_iter()
+        .for_each_with(g29.clone(), |g, (pressed, released)| {
+            let prev = match pressed {
+                Event::RightShifterPressed => state::right_shifter(prev_data),
+                Event::LeftShifterPressed => state::left_shifter(prev_data),
+                Event::R2ButtonPressed => state::r2_button(prev_data),
+                Event::L2ButtonPressed => state::l2_button(prev_data),
+                Event::ShareButtonPressed => state::share_button(prev_data),
+                Event::OptionsButtonPressed => state::options_button(prev_data),
+                Event::R3ButtonPressed => state::r3_button(prev_data),
+                Event::L3ButtonPressed => state::l3_button(prev_data),
+                _ => false,
+            };
 
-        let prev_left_shifter = state::left_shifter(prev_data);
-        let new_left_shifter = state::left_shifter(new_data);
-        if prev_left_shifter != new_left_shifter {
-            if new_left_shifter {
-                self.trigger(Event::LeftShifterPressed, g29);
-            } else {
-                self.trigger(Event::LeftShifterReleased, g29);
-            }
-        }
+            let new = match pressed {
+                Event::RightShifterPressed => state::right_shifter(new_data),
+                Event::LeftShifterPressed => state::left_shifter(new_data),
+                Event::R2ButtonPressed => state::r2_button(new_data),
+                Event::L2ButtonPressed => state::l2_button(new_data),
+                Event::ShareButtonPressed => state::share_button(new_data),
+                Event::OptionsButtonPressed => state::options_button(new_data),
+                Event::R3ButtonPressed => state::r3_button(new_data),
+                Event::L3ButtonPressed => state::l3_button(new_data),
+                _ => false,
+            };
 
-        let prev_r2_button = state::r2_button(prev_data);
-        let new_r2_button = state::r2_button(new_data);
-        if prev_r2_button != new_r2_button {
-            if new_r2_button {
-                self.trigger(Event::R2ButtonPressed, g29);
-            } else {
-                self.trigger(Event::R2ButtonReleased, g29);
+            if prev != new {
+                if new {
+                    self.trigger(*pressed, g);
+                } else {
+                    self.trigger(*released, g);
+                }
             }
-        }
-
-        let prev_l2_button = state::l2_button(prev_data);
-        let new_l2_button = state::l2_button(new_data);
-        if prev_l2_button != new_l2_button {
-            if new_l2_button {
-                self.trigger(Event::L2ButtonPressed, g29);
-            } else {
-                self.trigger(Event::L2ButtonReleased, g29);
-            }
-        }
-
-        let prev_share_button = state::share_button(prev_data);
-        let new_share_button = state::share_button(new_data);
-        if prev_share_button != new_share_button {
-            if new_share_button {
-                self.trigger(Event::ShareButtonPressed, g29);
-            } else {
-                self.trigger(Event::ShareButtonReleased, g29);
-            }
-        }
-
-        let prev_option_button = state::options_button(prev_data);
-        let new_option_button = state::options_button(new_data);
-        if prev_option_button != new_option_button {
-            if new_option_button {
-                self.trigger(Event::OptionsButtonPressed, g29);
-            } else {
-                self.trigger(Event::OptionsButtonReleased, g29);
-            }
-        }
-
-        let prev_r3_button = state::r3_button(prev_data);
-        let new_r3_button = state::r3_button(new_data);
-        if prev_r3_button != new_r3_button {
-            if new_r3_button {
-                self.trigger(Event::R3ButtonPressed, g29);
-            } else {
-                self.trigger(Event::R3ButtonReleased, g29);
-            }
-        }
-
-        let prev_l3_button = state::l3_button(prev_data);
-        let new_l3_button = state::l3_button(new_data);
-        if prev_l3_button != new_l3_button {
-            if new_l3_button {
-                self.trigger(Event::L3ButtonPressed, g29);
-            } else {
-                self.trigger(Event::L3ButtonReleased, g29);
-            }
-        }
+        });
     }
 
     fn trigger_gear_selector_events(&self, prev_data: &Frame, new_data: &Frame, g29: &mut G29) {
@@ -373,7 +331,6 @@ impl EventMap {
         let prev_plus_button = state::plus_button(prev_data);
         let new_plus_button = state::plus_button(new_data);
         if prev_plus_button == new_plus_button {
-            return;
         } else if new_plus_button {
             self.trigger(Event::PlusButtonPressed, g29);
         } else {
@@ -389,62 +346,78 @@ impl EventMap {
            spinner_button
            playstation_button
         */
-
-        let prev_minus_button = state::minus_button(prev_data);
-        let new_minus_button = state::minus_button(new_data);
-        if prev_minus_button != new_minus_button {
-            if new_minus_button {
-                self.trigger(Event::MinusButtonPressed, g29);
-            } else {
-                self.trigger(Event::MinusButtonReleased, g29);
+        [
+            (Event::MinusButtonPressed, Event::MinusButtonReleased),
+            (Event::SpinnerRight, Event::SpinnerRight),
+            (Event::SpinnerLeft, Event::SpinnerLeft),
+            (Event::SpinnerButtonPressed, Event::SpinnerButtonReleased),
+            (
+                Event::PlaystationButtonPressed,
+                Event::PlaystationButtonReleased,
+            ),
+        ]
+        .par_iter()
+        .for_each_with(g29.clone(), |g, (pressed, released)| {
+            match pressed {
+                Event::SpinnerRight => {
+                    let prev_spinner_right = state::spinner_right(prev_data);
+                    let new_spinner_right = state::spinner_right(new_data);
+                    if prev_spinner_right != new_spinner_right && new_spinner_right {
+                        self.trigger(Event::SpinnerRight, g);
+                    }
+                    return;
+                }
+                Event::SpinnerLeft => {
+                    let prev_spinner_left = state::spinner_left(prev_data);
+                    let new_spinner_left = state::spinner_left(new_data);
+                    if prev_spinner_left != new_spinner_left && new_spinner_left {
+                        self.trigger(Event::SpinnerLeft, g);
+                    }
+                    return;
+                }
+                _ => {}
             }
-        }
 
-        let prev_spinner_right = state::spinner_right(prev_data);
-        let new_spinner_right = state::spinner_right(new_data);
-        if prev_spinner_right != new_spinner_right && new_spinner_right {
-            self.trigger(Event::SpinnerRight, g29);
-        }
+            let prev = match pressed {
+                Event::MinusButtonPressed => state::minus_button(prev_data),
+                Event::SpinnerButtonPressed => state::spinner_button(prev_data),
+                Event::PlaystationButtonPressed => state::playstation_button(prev_data),
+                _ => false,
+            };
 
-        let prev_spinner_left = state::spinner_left(prev_data);
-        let new_spinner_left = state::spinner_left(new_data);
-        if prev_spinner_left != new_spinner_left && new_spinner_left {
-            self.trigger(Event::SpinnerLeft, g29);
-        }
+            let new = match pressed {
+                Event::MinusButtonPressed => state::minus_button(new_data),
+                Event::SpinnerButtonPressed => state::spinner_button(new_data),
+                Event::PlaystationButtonPressed => state::playstation_button(new_data),
+                _ => false,
+            };
 
-        let prev_spinner_button = state::spinner_button(prev_data);
-        let new_spinner_button = state::spinner_button(new_data);
-        if prev_spinner_button != new_spinner_button {
-            if new_spinner_button {
-                self.trigger(Event::SpinnerButtonPressed, g29);
-            } else {
-                self.trigger(Event::SpinnerButtonReleased, g29);
+            if prev != new {
+                if new {
+                    self.trigger(*pressed, g);
+                } else {
+                    self.trigger(*released, g);
+                }
             }
-        }
-
-        let prev_playstation_button = state::playstation_button(prev_data);
-        let new_playstation_button = state::playstation_button(new_data);
-        if prev_playstation_button != new_playstation_button {
-            if new_playstation_button {
-                self.trigger(Event::PlaystationButtonPressed, g29);
-            } else {
-                self.trigger(Event::PlaystationButtonReleased, g29);
-            }
-        }
+        });
     }
 
     fn trigger_steering_events(&self, prev_data: &Frame, new_data: &Frame, g29: &mut G29) {
-        let prev_steering_fine = state::steering_fine(prev_data);
-        let new_steering_fine = state::steering_fine(new_data);
-        if prev_steering_fine != new_steering_fine {
-            self.trigger(Event::SteeringFine, g29);
-        }
+        [Event::Steering, Event::SteeringFine]
+            .par_iter()
+            .for_each_with(g29.clone(), |g29, op| {
+                let changed = match op {
+                    Event::Steering => state::steering(prev_data) != state::steering(new_data),
+                    Event::SteeringFine => {
+                        state::steering_fine(prev_data) != state::steering_fine(new_data)
+                    }
+                    _ => false,
+                };
 
-        let prev_steering = state::steering(prev_data);
-        let new_steering = state::steering(new_data);
-        if prev_steering != new_steering {
-            self.trigger(Event::Steering, g29);
-        }
+                if changed {
+                    self.trigger(*op, g29);
+                }
+            });
     }
 
     fn trigger_throttle_event(&self, prev_data: &Frame, new_data: &Frame, g29: &mut G29) {
@@ -512,4 +485,28 @@ fn different_indices(data1: &Frame, data2: &Frame) -> Vec<usize> {
         .enumerate()
         .filter_map(|(i, &x)| if x != data2[i] { Some(i) } else { None })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Frame;
+
+    #[test]
+    fn test_different_indices_none() {
+        let data1: Frame = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let data2: Frame = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+        let result = crate::events::different_indices(&data1, &data2);
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_different_indices_some() {
+        let data1: Frame = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let data2: Frame = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 12];
+
+        let result = crate::events::different_indices(&data1, &data2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result, vec![9, 10]);
+    }
 }
