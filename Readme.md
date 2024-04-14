@@ -16,7 +16,7 @@ fn main() {
     let g29 = G29::connect(Options::default());
 
     g29.register_event_handler(
-        g29::events::Event::PlaystationButtonReleased,
+        Event::PlaystationButtonReleased,
         playstation_button_released_handler,
     );
 
