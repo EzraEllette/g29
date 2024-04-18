@@ -111,7 +111,7 @@ static CONNECTED: AtomicBool = AtomicBool::new(false);
 /// # Example
 ///
 /// ```rust
-/// use g29::{G29, Options, Led};
+/// use lib_g29{G29, Options, Led};
 /// use std::time::Duration;
 /// use std::thread::sleep;
 ///
@@ -154,7 +154,7 @@ struct InnerG29 {
 /// # Example
 ///
 /// ```rust
-/// use g29::Options;
+/// use lib_g29Options;
 ///
 /// let options = Options {
 ///    range: 540,
@@ -499,7 +499,7 @@ impl G29 {
     /// # Example
     ///
     /// ```rust
-    /// use g29::{G29, Options};
+    /// use lib_g29{G29, Options};
     ///
     ///   let options = Options {
     ///     ..Default::default()
@@ -524,7 +524,7 @@ impl G29 {
     /// - `leds` - The LED lights to set
     /// # Example
     /// ```rust
-    /// use g29::{G29, Options, Led};
+    /// use lib_g29{G29, Options, Led};
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
@@ -557,7 +557,7 @@ impl G29 {
     ///
     /// # Example
     /// ```rust
-    /// use g29::{G29, Options};
+    /// use lib_g29{G29, Options};
     ///
     ///   let options = Options {
     ///     ..Default::default()
@@ -747,7 +747,7 @@ impl G29 {
     /// Disconnect from the G29.
     /// # Example
     /// ```rust
-    /// use g29::{G29, Options};
+    /// use lib_g29{G29, Options};
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
@@ -794,7 +794,7 @@ impl G29 {
     /// - `handler` - The handler function
     /// # Example
     /// ```rust
-    /// use g29::{G29, Options, Event, EventHandler};
+    /// use lib_g29{G29, Options, Event, EventHandler};
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
@@ -828,7 +828,7 @@ impl G29 {
     /// - `event_handler` - The event handler to unregister
     /// # Example
     /// ```rust
-    /// use g29::{G29, Options, Event, EventHandler};
+    /// use lib_g29{G29, Options, Event, EventHandler};
     /// use std::time::Duration;
     /// use std::thread::sleep;
     ///
